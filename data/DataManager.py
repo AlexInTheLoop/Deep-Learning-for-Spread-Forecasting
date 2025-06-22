@@ -222,15 +222,27 @@ class DataManager:
             print(f"📊 Construction des labels pour : {symbol} {year_str}-{month_str}")
 
             df = pd.read_parquet(parquet_path)
-            df.columns = [
-                "update_id",
-                "best_bid_price",
-                "best_bid_qty",
-                "best_ask_price",
-                "best_ask_qty",
-                "transaction_time",
-                "event_time"
-            ]
+            if df.shape[1] == 3:               # mode light (transaction_time, bid, ask)
+                df.columns = [
+                    "transaction_time",
+                    "best_bid_price",
+                    "best_ask_price"
+                ]
+            elif df.shape[1] == 7:             # mode complet
+                df.columns = [
+                    "update_id",
+                    "best_bid_price",
+                    "best_bid_qty",
+                    "best_ask_price",
+                    "best_ask_qty",
+                    "transaction_time",
+                    "event_time"
+                ]
+            else:
+                raise ValueError(f"Format inattendu pour {parquet_path} : "
+                                f"{df.shape[1]} colonnes")
+
+            df.columns = ["best_bid_price","best_ask_price","transaction_time",]
 
             if not np.issubdtype(df["transaction_time"].dtype, np.datetime64):
                 try:

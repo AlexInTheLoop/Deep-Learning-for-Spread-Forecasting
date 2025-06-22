@@ -1,13 +1,69 @@
 from keras import Model, layers
 import tensorflow as tf
 
+
+class CNN_test(Model):
+    """
+    CNN 1-D (conv-BN-ReLU-(pool) ×3) suivi d’un petit MLP.
+    Paramètre `n_outputs` : nombre de spreads à prédire
+                         (= nb d’actifs dans le batch du jour).
+    """
+    def __init__(self,
+                 input_shape,          # (seq_len, n_feats)
+                 n_outputs=1,          # ← NEW
+                 dropout_rate=0.2,
+                 **kwargs):
+        super().__init__(**kwargs)
+
+        seq_len, _ = input_shape
+        self.use_pool = seq_len >= 8         # 3 max-pool ⇒ min 2³=8 pas
+
+        self.conv1 = layers.Conv1D(16, 5, padding="same")
+        self.bn1   = layers.BatchNormalization()
+        self.pool1 = layers.MaxPool1D(2)
+
+        self.conv2 = layers.Conv1D(32, 5, padding="same")
+        self.bn2   = layers.BatchNormalization()
+        self.pool2 = layers.MaxPool1D(2)
+
+        self.conv3 = layers.Conv1D(64, 3, padding="same")
+        self.bn3   = layers.BatchNormalization()
+        self.pool3 = layers.MaxPool1D(2)
+
+        self.flatten = layers.Flatten()
+        self.fc1     = layers.Dense(128, activation="relu")
+        self.drop    = layers.Dropout(dropout_rate)
+
+        # --- couche de sortie adaptable ---
+        self.head    = layers.Dense(
+            n_outputs, activation="softplus",
+            name=f"spread_out_{n_outputs}"
+        )
+
+    # ------------------------------------------------------------------ #
+    def call(self, inputs, training=False):
+        x = tf.nn.relu(self.bn1(self.conv1(inputs), training=training))
+        if self.use_pool: x = self.pool1(x)
+
+        x = tf.nn.relu(self.bn2(self.conv2(x),    training=training))
+        if self.use_pool: x = self.pool2(x)
+
+        x = tf.nn.relu(self.bn3(self.conv3(x),    training=training))
+        if self.use_pool: x = self.pool3(x)
+
+        x = self.flatten(x)
+        x = self.drop(self.fc1(x), training=training)
+        return self.head(x)
+
+
+
 class CNN(Model):
     def __init__(self, input_shape, **kwargs):
         super().__init__(**kwargs)
         seq_len, in_channels = input_shape
 
         if seq_len < 8:
-            print(f"⚠️ Séquence trop courte (seq_len={seq_len}) pour un CNN avec 3 poolings. Désactivation des pools.")
+            print(f"Séquence trop courte (seq_len={seq_len}) pour un CNN avec 3 poolings. Désactivation des pools.")
             self.use_pooling = False
         else:
             self.use_pooling = True
@@ -109,7 +165,22 @@ class BGR(Model):
         x = self.fc1(x)
         x = self.dropout(x, training=training)
         return self.fc2(x)
-    
+
+
+def create_cnn_model_test(input_shape,
+                     n_outputs=1,
+                     model_type="simple",
+                     **kwargs):
+    if model_type.lower() == "simple":
+        model = CNN_test(input_shape, n_outputs=n_outputs, **kwargs)
+    elif model_type.lower() == "bgr":
+        model = BGR(input_shape, **kwargs)          # BGR ne change pas ici
+        model.head = layers.Dense(n_outputs, activation="softplus")
+    else:
+        raise ValueError("model_type must be 'simple' or 'bgr'")
+
+    model.compile(optimizer="adam", loss="mse")
+    return model
 
 def create_cnn_model(input_shape, model_type="simple", **kwargs):
     """

@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import requests
 
 from parametric_estimators.hurst_estimator import estimateur_Hurst
@@ -51,6 +52,58 @@ def get_basic_features(symbol, date, group):
             "tick_size": tick_size
         }
     return row
+
+def get_serial_dependancy_features_v2(df_features: pd.DataFrame)->pd.DataFrame:
+    """
+    Méthode permettant de calculer et d'ajouter des features de dépendance sérielle pour enrichir l'estimation des modèles
+
+    Input :
+    - df_features : dataframe contenant les features basiques utilisées en intraday pour tous les modèles
+
+    Output :
+    - dataframe contenant toutes les features
+    """
+
+    # Création d'un dataframe pour stocker les features de dépendance sérielle
+    df_serial_dependance: pd.DataFrame = pd.DataFrame()
+
+    # Récupération de la série des prix close et passage en log
+    close_arr = df_features["close"]
+    log_close = np.log(close_arr)
+
+    # Première feature : incrément du prix, en logarithme
+    delta1 = np.zeros_like(log_close)
+    delta1[1:] = log_close[1:] - log_close[:-1]
+    df_serial_dependance["delta1"] = delta1
+
+    # 2eme feature : convariance non laggées
+    cov1 = np.zeros_like(log_close)
+    cov1[2:] = (log_close[2:] - log_close[1:-1]) * (log_close[1:-1] - log_close[:-2])
+    df_serial_dependance["cov1"] = cov1
+
+    # 3eme feature : covariance avec un lag
+    cov2 = np.zeros_like(log_close)
+    if len(log_close) >= 5:
+        # On calcule pour i>=4
+        for i in range(4, len(log_close)):
+            cov2[i] = (log_close[i] - log_close[i-2]) * (log_close[i-2] - log_close[i-4])
+    df_serial_dependance["cov2"] = cov2
+
+    # 4eme feature : variance glissante sur 10 minutes des incréments delta1
+    var10 = np.zeros_like(delta1)
+    window = 10
+    for i in range(window, len(delta1)):
+        var10[i] = np.var(delta1[i-window:i])
+    mu_var10 = var10.mean()
+    sigma_var10 = var10.std() if var10.std() > 0 else 1.0
+    var10 = (var10 - mu_var10) / sigma_var10
+    df_serial_dependance["var10"] = var10
+
+    # 5eme feature -- à voir (corrélation de la vol sur son passé, ...)
+
+    # Concaténation avec le dataframe de features pris en entrée
+    df_all_features: pd.DataFrame = pd.concat([df_features, df_serial_dependance], axis=1)
+    return df_all_features
 
 def get_serial_dependency_features(date, group, features):
     try:
@@ -144,3 +197,16 @@ def get_serial_dependency_features(date, group, features):
         print(f"Erreur calcul features séries temporelles pour {date}: {e}")
     
     return features
+
+def normalize(feature: pd.Series) -> pd.Series:
+    """
+    Méthode  utilitaires pour normaliser une série
+    """
+
+    # Calcul des moments
+    mean_feature = np.mean(feature)
+    std_feature = np.std(feature)
+
+    # Calcul de la série normalisée et récupération
+    normalized_features: pd.Series = (feature - mean_feature)/std_feature
+    return normalized_features

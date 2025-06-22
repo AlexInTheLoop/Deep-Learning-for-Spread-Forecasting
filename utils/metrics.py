@@ -28,9 +28,8 @@ def compute_model_metrics(model, X_test, y_test, y_scaler=None, name=None):
         print(f"Métrique du modèle {name}:")
     else:
         print("Métriques:")
-    score = (r2 + 1/rmse + 1/mae) / 3
-    print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}, Score: {score:.4f}")
-    return r2, rmse, mae, score
+    print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}")
+    return r2, rmse, mae
 
 def compile_models_metrics(models, X_test, y_test, y_scaler=None):
     """

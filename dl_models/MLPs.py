@@ -1,4 +1,4 @@
-from keras import Model, layers
+from keras import Model, layers, callbacks
 
 class MLP(Model):
     """
@@ -85,3 +85,16 @@ def create_mlp_model(input_shape, model_type="simple", **kwargs):
     else:
         raise ValueError(f"Unknown model_type '{model_type}'. Use 'simple' or 'residual'.")
 
+
+class LRHistory(callbacks.Callback):
+    """
+    Classe permettant de construire un callback customisé
+    pour stocker le taux d'apprentissage à chaque epoch
+    """
+
+    def on_train_begin(self, logs=None):
+        self.lrs: list = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        lr: float = float(self.model.optimizer._get_current_learning_rate().value)
+        self.lrs.append(float(lr))

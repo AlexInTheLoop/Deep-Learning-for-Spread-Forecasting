@@ -37,7 +37,7 @@ def get_parametric_estimators_series(X, meta, use_opposed):
     for day in sorted(df_full["day"].unique()):
         df_day = df_full[df_full["day"] == day]
         if len(df_day) < minutes_per_day:
-            print(f"⚠️ Données incomplètes pour le jour {day} → ignoré.")
+            print(f"Données incomplètes pour le jour {day} → ignoré.")
             continue
 
         ohlc = df_day[["open", "high", "low", "close"]].values[:minutes_per_day]
@@ -64,19 +64,19 @@ def compute_parametric_estimators(data, use_opposed=False):
         high_arr  = np.asarray(data["high"],  dtype=float)
         low_arr   = np.asarray(data["low"],   dtype=float)
     except Exception as e:
-        print("❌ Erreur de colonne ou de contenu dans data", e)
+        print("Erreur de colonne ou de contenu dans data", e)
         return np.zeros(9, dtype=float)
 
     if close_arr.size == 0 or open_arr.size == 0 or high_arr.size == 0 or low_arr.size == 0:
-        print("⚠️ data est vide pour cette journée.")
+        print("data est vide pour cette journée.")
         return np.zeros(9, dtype=float)
 
     if np.any(close_arr <= 0) or np.any(open_arr <= 0) or np.any(high_arr <= 0) or np.any(low_arr <= 0):
-        print("⚠️ valeur négative détectée dans data.")
+        print("valeur négative détectée dans data.")
         return np.zeros(9, dtype=float)
 
     if np.isnan(close_arr).any() or np.isnan(open_arr).any() or np.isnan(high_arr).any() or np.isnan(low_arr).any():
-        print("⚠️ un NaN détecté dans data.")
+        print("un NaN détecté dans data.")
         return np.zeros(9, dtype=float)
 
     try:

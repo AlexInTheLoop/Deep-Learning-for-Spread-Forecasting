@@ -5,6 +5,7 @@
 # Set up
 import sys
 import os
+
 project_root = os.path.abspath(os.path.join(os.getcwd(), '.'))
 if project_root not in sys.path:
     sys.path.append(project_root)
@@ -93,4 +94,43 @@ labels_paths_test = manager_test.build_labels()
 X_train, X_val, y_train, y_val = manager_train.build_train_val_dataset()
 
 
+# Construction des tests
+X_test, y_test = manager_test.build_train_val_dataset(is_test=True)
+
+# Normalisation des features
+scaler_y = StandardScaler()
+y_train_scaled = scaler_y.fit_transform(y_train.reshape(-1, 1)).reshape(y_train.shape)
+y_val_scaled = scaler_y.transform(y_val.reshape(-1, 1)).reshape(y_val.shape)
+y_test_scaled = scaler_y.transform(y_test.reshape(-1, 1)).reshape(y_test.shape)
+
+# Normalisation des features
+scaler_X = StandardScaler()
+X_train_scaled = scaler_X.fit_transform(X_train).reshape(X_train.shape)
+X_val_scaled = scaler_X.transform(X_val).reshape(X_val.shape)
+X_test_scaled = scaler_X.transform(X_test).reshape(X_test.shape)
+
+# Train CNN
+X_tr_cnn, y_tr_cnn = manager_train.format_data(
+    X_train_scaled, y_train_scaled,
+    model_type='cnn',
+    daily=False,
+    nb_assets=1,
+    minutes_per_day=1440
+)
+print("TRAIN CNN :", X_tr_cnn.shape, y_tr_cnn.shape)
+
+# Création et entraînement du CNN
+input_shape = X_tr_cnn.shape[1:]     # (1440, 11)
+cnn = create_cnn_model(input_shape=input_shape, model_type="simple")
+cnn.compile(optimizer='adam', loss='mse')
+
+history = cnn.fit(
+    X_tr_cnn, y_tr_cnn,
+    validation_split=0.2,
+    epochs=60,
+    batch_size=32,
+    verbose=1,
+    callbacks=[keras.callbacks.EarlyStopping(patience=5,
+                                             restore_best_weights=True)]
+)
 

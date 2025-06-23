@@ -417,13 +417,15 @@ class DataManager:
                 # Fusion des dataframes et récupération des features / spread
                 df_merged = pd.merge(df_feat, df_label, on="day", how="inner")
                 X = df_merged.loc[:, df_merged.columns != "spread_real"]
+                y = df_merged["spread_real"]
 
                 # Spread du jour = moyenne du spread intra-journalier
-                y = df_merged["spread_real"].groupby(["day"]).mean().values.astype(np.float32)
+                # y = df_merged.groupby("day")["spread_real"].mean()
 
                 meta_all.append(pd.DataFrame({
                     "symbol": [symbol] * len(df_merged),
-                    "day": df_merged["day"]
+                    "day": df_merged["day"],
+                    "month":df_merged["month"]
                 }))
 
                 # Ajout dans la liste
@@ -474,6 +476,9 @@ class DataManager:
                 X = X[:-1,:]
             while y.shape[0]%nb_assets != 0:
                 y = y[:-1,:]
+
+            # transformation de y en spread moyen quotidien
+            y = self.reduce_labels(y, len_sequence)
             return X,y
 
         # Autre cas : train / val split usuel
@@ -481,102 +486,8 @@ class DataManager:
             if X.shape[0]%(nb_assets * len_sequence)!= 0:
                 raise Exception("Problème pour effectuer le split entre train et test")
             # Séparation entre train / val et récupération
-            X_train, y_train, X_val, y_val = train_test_split(X, y, test_size=val_size, random_state=72)
+            X_train, y_train, X_val, y_val = self._time_series_split_minute(X, y, val_size)
         return X_train, X_val, y_train, y_val
-
-    """
-    def build_training_data(self, symbols=None, serial_dependency=False, daily=True):
-        if symbols is None:
-            symbols = self.symbols
-
-        X_all = []
-        y_all = []
-        meta_all = []
-
-        # Boucle sur les actifs
-        for symbol in symbols:
-            for year, month in self.dates:
-                month_str = f"{self.month:02d}"
-                year_str = str(self.year)
-                base_name = f"{symbol}-1m-{year_str}-{month_str}"
-
-                if daily:
-                    feature_path = os.path.join(
-                        self.daily_features_data_dir,
-                        f"{base_name}_features_{serial_dependency}.parquet"
-                    )
-                else:
-                    feature_path = os.path.join(
-                        self.minute_features_data_dir,
-                        f"{base_name}_features_1min_klines.parquet"
-                    )
-
-                label_name = f"{symbol}-bookTicker-{year_str}-{month_str}_labels.parquet"
-                label_path = os.path.join(self.labels_data_dir, label_name)
-
-                if not os.path.exists(feature_path):
-                print(f"❌ Fichier features manquant : {feature_path}")
-                continue
-            if not os.path.exists(label_path):
-                print(f"❌ Fichier labels manquant : {label_path}")
-                continue
-
-            df_feat = pd.read_parquet(feature_path)
-            df_label = pd.read_parquet(label_path)
-
-            if daily:
-                if "day" not in df_feat.columns:
-                    df_feat["datetime"] = pd.to_datetime(df_feat["date"])
-                    df_feat["day"] = df_feat["datetime"].dt.day
-
-                df_merged = pd.merge(df_feat, df_label, on="day", how="inner")
-
-                X = df_merged.drop(columns=["spread_real"] + [col for col in df_merged.columns if col.startswith("date")], errors="ignore")
-                y = df_merged["spread_real"]
-
-                meta_all.append(pd.DataFrame({
-                    "symbol": [symbol] * len(df_merged),
-                    "day": df_merged["day"]
-                }))
-
-            else:
-                df_merged = pd.merge(df_feat, df_label, on="day", how="inner")
-                features = [
-                    "day", "open", "high", "low", "close", "volume",
-                    "return", "log_return", "high_low_spread",
-                    "volume_change", "rolling_sum_volume"
-                ]
-                X = df_merged[features]
-                y = df_merged["spread_real"]
-
-                meta_all.append(pd.DataFrame({
-                    "symbol": [symbol] * len(df_merged),
-                    "day": df_merged["day"]
-                }))
-
-            X_all.append(X)
-            y_all.append(y)
-
-        if not X_all:
-            raise ValueError("Aucune donnée disponible pour entraîner le modèle.")
-
-        X_final = pd.concat(X_all, ignore_index=True).to_numpy(dtype=np.float32)
-        y_final = pd.concat(y_all, ignore_index=True).to_numpy(dtype=np.float32)
-        self.meta = pd.concat(meta_all, ignore_index=True)
-
-        max_float32 = np.finfo(np.float32).max
-        min_float32 = np.finfo(np.float32).min
-        X_final = np.nan_to_num(X_final, nan=0.0, posinf=max_float32, neginf=min_float32)
-        y_final = np.nan_to_num(y_final, nan=0.0, posinf=max_float32, neginf=min_float32)
-
-        max_float32 = np.finfo(np.float32).max
-        min_float32 = np.finfo(np.float32).min
-        X_final = np.clip(X_final, min_float32, max_float32)
-        y_final = np.clip(y_final, min_float32, max_float32)
-
-        print(f"✅ Données prêtes : X.shape = {X_final.shape}, y.shape = {y_final.shape}")
-        return X_final, y_final
-    """
 
     def time_series_features(self, X, y, daily = True, test_size=0.2, val_size=0.2):
         """
@@ -587,23 +498,22 @@ class DataManager:
         else:
             return self._time_series_split_daily(X, y, test_size, val_size)
 
-    def _reduce_labels_by_day_symbol(self, y_part, day_part, symbol_part):
+    @staticmethod
+    def reduce_labels(y_part, n_min: int):
         """
-        Réduit les labels à un seul par (day, symbol), en conservant l'ordre d'apparition [day, symbol].
+        fonction  permettant de passer des spread intraday au spread journalier moyen
+
+        arguments :
+        - nb_rows_per_day : nombre de lignes par mois
         """
-        import pandas as pd
 
-        df = pd.DataFrame({
-            "y": y_part,
-            "day": day_part,
-            "symbol": symbol_part
-        })
+        # Modification de la dimension de y : passage en 3D (nb_days * nb_months * nb_assets, 1440,1)
+        spread_per_day = y_part.reshape(int(np.ceil(y_part.shape[0] / n_min)), n_min, 1)
 
-        df_sorted = df.sort_values(by=["day", "symbol"], kind="stable")
+        # Calcul de la moyenne intraday
+        avg_daily_spread = np.mean(spread_per_day, axis=1)
 
-        grouped = df_sorted.groupby(["day", "symbol"], sort=False)["y"].mean()
-
-        return grouped.values.astype(np.float32)
+        return avg_daily_spread
 
     def _time_series_split_minute(self, X, y, val_size):
         df_meta = self.meta.copy()
@@ -617,15 +527,27 @@ class DataManager:
         days_sorted = df_meta_sorted["day"].values
         symbols_sorted = df_meta_sorted["symbol"].values
 
+        # Nombre de minutes par jour
+        n_min: int = 1440
+
+        # Récupération du nombre de jours / mois
         unique_days = np.unique(days_sorted)
         n_days = len(unique_days)
 
-        rows_per_day = self.nb_assets * 1440
-        assert len(X_sorted) == rows_per_day * n_days, "X incohérent avec nb_assets et minute-level"
+        # Récupération du nombre de mois
+        n_months: int = len(self.dates)
 
-        # Nombre de données à conserver pour l'ensemble de train et de validation
-        n_val = int(np.ceil(val_size * n_days))
-        n_train = n_days - n_val
+        # Récupération du nombre de périodes
+        n_periods: int = n_months * n_days
+
+        # Nombre de lignes par jours / Nombre de lignes dans le train
+        rows_per_day = self.nb_assets * n_min
+        nb_val_train: int = rows_per_day * n_days * n_months
+        assert len(X_sorted) == nb_val_train, "X incohérent avec nb_assets et minute-level"
+
+        # Nombre de données temporelles à conserver pour l'ensemble de train et de validation
+        n_val = int(np.ceil(val_size * n_periods))
+        n_train = n_periods - n_val
 
         def get_day_indices(start_day_idx, n_days_split):
             day_indices = []
@@ -644,25 +566,11 @@ class DataManager:
         y_train_full = y_sorted[idx_train]
         y_val_full = y_sorted[idx_val]
 
-        days_train = days_sorted[idx_train]
-        days_val = days_sorted[idx_val]
+        y_train = self.reduce_labels(y_train_full, n_min=n_min)
+        y_val = self.reduce_labels(y_val_full, n_min=n_min)
 
-        symbols_train = symbols_sorted[idx_train]
-        symbols_val = symbols_sorted[idx_val]
-
-        def reduce_labels(y_part, day_part, symbol_part):
-            df = pd.DataFrame({
-                "y": y_part,
-                "day": day_part,
-                "symbol": symbol_part
-            })
-            return df.groupby(["day", "symbol"], sort=False)["y"].mean().values.astype(np.float32)
-
-        y_train = reduce_labels(y_train_full, days_train, symbols_train)
-        y_val = reduce_labels(y_val_full,   days_val,   symbols_val)
-
-        print(f"✅ Split : train={len(X_train)}, val={len(X_val)}")
-        print(f"✅ Labels : y_train={len(y_train)}, y_val={len(y_val)}")
+        print(f"Split : train={len(X_train)}, val={len(X_val)}")
+        print(f"Labels : y_train={len(y_train)}, y_val={len(y_val)}")
 
         return X_train, y_train, X_val, y_val
 

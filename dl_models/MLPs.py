@@ -8,7 +8,7 @@ class MLP(Model):
         super().__init__(**kwargs)
         self.flatten = layers.Flatten()
         self.hidden_layers = [layers.Dense(h, activation='relu') for h in hidden_dims]
-        self.out = layers.Dense(1, activation='softplus')
+        self.out = layers.Dense(1)
 
     def call(self, inputs, training=False):
         x = self.flatten(inputs)

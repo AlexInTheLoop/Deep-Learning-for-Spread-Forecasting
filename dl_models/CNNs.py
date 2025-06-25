@@ -7,7 +7,7 @@ class CNN(Model):
         seq_len, in_channels = input_shape
 
         if seq_len < 8:
-            print(f"⚠️ Séquence trop courte (seq_len={seq_len}) pour un CNN avec 3 poolings. Désactivation des pools.")
+            print(f"Séquence trop courte (seq_len={seq_len}) pour un CNN avec 3 poolings. Désactivation des pools.")
             self.use_pooling = False
         else:
             self.use_pooling = True
@@ -74,8 +74,8 @@ class BGR(Model):
         # Évaluer si pooling possible
         min_required_len = 2 ** self.num_blocks
         if seq_len < min_required_len:
-            print(f"⚠️ Séquence trop courte (seq_len={seq_len}) pour {self.num_blocks} blocs avec pooling.")
-            print(f"   → Pooling désactivé.")
+            print(f"Séquence trop courte (seq_len={seq_len}) pour {self.num_blocks} blocs avec pooling.")
+            print(f"Pooling désactivé")
             self.use_pooling = False
         else:
             self.use_pooling = True

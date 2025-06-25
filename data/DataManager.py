@@ -4,6 +4,7 @@ import numpy as np
 import requests
 import zipfile
 import tensorflow as tf
+from numpy.random import normal
 from sklearn.model_selection import train_test_split
 
 import sys
@@ -178,7 +179,7 @@ class DataManager:
 
         # Cas où l'utilisateur souhaite supprimer les features créées précédemment
         if clean_features:
-            self._clean_features("labels")
+            self._clean_features("features")
 
         # Double boucle par actif et date
         for symbol in self.symbols:
@@ -402,9 +403,14 @@ class DataManager:
                 # Récupération du jour
                 df["day"] = df["datetime"].dt.day
 
-                # Calcul du spread entre les séries de bid / ask et normalisation
-                df["spread"] = df["best_ask_price"] - df["best_bid_price"]
-                df["spread"] = normalize(df["spread"])
+                # Calcul des séries bid / ask normalisée
+                df["normalized_ask"] = normalize(df["best_ask_price"])
+                df["normalized_bid"] = normalize(df["best_bid_price"])
+
+                # Calcul du spread entre les séries de bid / ask normalisées en valeur absolue (pour garantir que le spread soit positif)
+                df["spread"] = np.abs(df["normalized_ask"] - df["normalized_bid"])
+                #df["spread"] = df["best_ask_price"] - df["best_bid_price"]
+                #df["spread"] = normalize(df["spread"])
 
                 # Regroupement par jour ==> pas sur pour la normalisation, peut être nul
                 df_daily = df.groupby("day")["spread"].mean().reset_index()

@@ -78,16 +78,16 @@ manager_train: DataManager = DataManager(symbols=cryptos_train, dates=train_peri
 manager_train.download_and_prepare_data()
 
 # Construction des features / labels pour les données d'entrainement
-feature_paths = manager_train.load_features(use_serial_dependance)
-labels_paths = manager_train.build_labels()
+feature_paths = manager_train.load_features(use_serial_dependance, clean_features=True, use_tick_size=True)
+labels_paths = manager_train.build_labels(clean_labels=True)
 
 # Création du datamanager pour gérer les données de test (et import)
 manager_test: DataManager = DataManager(symbols=cryptos_test, dates=test_period, light=True)
 manager_test.download_and_prepare_data()
 
 # Construction des features et labels pour les données de test
-feature_paths_test = manager_test.load_features(use_serial_dependance)
-labels_paths_test = manager_test.build_labels()
+feature_paths_test = manager_test.load_features(use_serial_dependance, clean_features=True, use_tick_size=True)
+labels_paths_test = manager_test.build_labels(clean_labels=True)
 
 
 # Test dataframe de construction de test et val

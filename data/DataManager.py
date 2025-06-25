@@ -20,6 +20,8 @@ DAILY_FEATURES_DATA_DIR = "daily features data"
 MINUTE_FEATURES_DATA_DIR = "minute features data"
 PARAMETRIC_ESTIMATORS_DIR = "parametric estimators"
 
+LABELS_LABEL = "labels"
+FEATURES_LABEL = "features"
 
 class DataManager:
     """
@@ -159,7 +161,7 @@ class DataManager:
                 else:
                     print(f"BookTicker déjà existant : {bookticker_parquet_path}")
 
-    def load_features(self, serial_dependency:bool = False):
+    def load_features(self, serial_dependency:bool = False, clean_features: bool = False, use_tick_size: bool = False):
         """
         Méthode permettant de sauvegarder les features intra-day utilisées pour estimer les modèles.
 
@@ -173,6 +175,10 @@ class DataManager:
         nb_days:int = 30
         nb_minute_per_day:int = 1440
         nb_sequences:int = nb_days * nb_minute_per_day
+
+        # Cas où l'utilisateur souhaite supprimer les features créées précédemment
+        if clean_features:
+            self._clean_features("labels")
 
         # Double boucle par actif et date
         for symbol in self.symbols:
@@ -197,6 +203,11 @@ class DataManager:
                 # Construction des features intraday avec / sans dépendance sérielle
                 df_out = self.build_features(parquet_path, use_serial_dependency=serial_dependency)
 
+                # Cas où l'utilisateur souhaite utiliser le ticksize comme feature
+                if use_tick_size:
+                    tick_size: float = self._load_ticksize(symbol)
+                    df_out["ticksize"] = tick_size
+
                 # Si on travaille sur un mois à moins de 30 jours, on passe (uniformisation des données) ==> à revoir ; cas à +30 jours gérés dans la méthode
                 if df_out.shape[0] < nb_sequences:
                     continue
@@ -210,6 +221,53 @@ class DataManager:
                 processed_paths.append(processed_path)
                 print(f"Features générées pour l'actif {symbol} et la date {year}-{month_str}")
         return processed_paths
+
+    def _clean_features(self, elem_model:str):
+        """
+        Méthode permettant de supprimer tous les fichiers contenant les features / labels créés lors des
+        run précédents
+        """
+        print(f"Suppression des fichiers de {elem_model} créés précédemment")
+        if elem_model == LABELS_LABEL:
+            filelist: list = [f for f in os.listdir(self.labels_data_dir)]
+        elif elem_model == FEATURES_LABEL:
+            filelist: list = [f for f in os.listdir(self.minute_features_data_dir)]
+        else:
+            raise Exception(f"Aucun répertoire n'est associé à {elem_model}")
+
+        # Boucle sur tous les fichiers et suppression
+        for f in filelist:
+            if elem_model == LABELS_LABEL:
+                # Récupération du path absolu du fichier
+                file_path = os.path.join(self.labels_data_dir, f)
+            else:
+                file_path = os.path.join(self.minute_features_data_dir, f)
+            os.remove(file_path)
+        print("Suppression des fichiers de features terminée")
+
+    @staticmethod
+    def _load_ticksize(symbol: str)->float:
+        """
+        Méthode permettant de télécharger le ticksize associé au ticker
+        pour tester son pouvoir prédictif dans le modèle de Deep Learning
+        """
+
+        # Création du ticksize (nan par défaut)
+        tick_size: float = np.nan
+        try:
+            # Import du ticksize depuis l'API binance
+            exchange_info = requests.get(
+                f"https://fapi.binance.com/fapi/v1/exchangeInfo?symbol={symbol}"
+            ).json()
+            for f in exchange_info["symbols"][0]["filters"]:
+                if f["filterType"] == "PRICE_FILTER":
+                    tick_size = float(f["tickSize"])
+                    break
+        except Exception as e:
+            print(f"Erreur récupération tick_size : {e}")
+
+        # Récupération du ticksize
+        return tick_size
 
     @staticmethod
     def build_features(klines_path, use_serial_dependency: bool = False):
@@ -269,6 +327,7 @@ class DataManager:
             # Récupération du dataframe avec dépendance sérielle
             df_features = get_serial_dependancy_features_v2(df_features)
 
+
         # Suppression de la colonne de dates
         df_features.drop("datetime", axis=1, inplace=True)
         df_features.drop("date", axis=1, inplace=True)
@@ -276,7 +335,7 @@ class DataManager:
         # récupération du dataframe
         return df_features
 
-    def build_labels(self)->list:
+    def build_labels(self, clean_labels: bool = False)->list:
         """
         Méthode permettant de calculer les spreads journaliers
         """
@@ -286,6 +345,10 @@ class DataManager:
 
         # Retraitement sur les jours pour garantir l'uniformisation des données
         nb_days:int = 30
+
+        # Cas où l'utilisateur souhaite supprimer les labels créés précédemment
+        if clean_labels:
+            self._clean_features("labels")
 
         # Double boucle actif / date
         for symbol in self.symbols:
@@ -339,12 +402,9 @@ class DataManager:
                 # Récupération du jour
                 df["day"] = df["datetime"].dt.day
 
-                # Normalisation des bid et des ask
-                df["normalized_ask"] = normalize(df["best_ask_price"])
-                df["normalized_bid"] = normalize(df["best_bid_price"])
-
-                # Calcul du spread entre les séries de bid / ask normalisées
-                df["spread"] = df["normalized_ask"] - df["normalized_bid"]
+                # Calcul du spread entre les séries de bid / ask et normalisation
+                df["spread"] = df["best_ask_price"] - df["best_bid_price"]
+                df["spread"] = normalize(df["spread"])
 
                 # Regroupement par jour ==> pas sur pour la normalisation, peut être nul
                 df_daily = df.groupby("day")["spread"].mean().reset_index()

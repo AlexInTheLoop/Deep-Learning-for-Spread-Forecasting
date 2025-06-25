@@ -10,7 +10,6 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 # Importation des modules nécessaires
-import numpy as np
 import pandas as pd
 import keras
 from sklearn.preprocessing import StandardScaler
@@ -27,21 +26,78 @@ from dl_models.RNNs import LSTM, GRU, TKAN, create_rnn_model
 from utils.metrics import compile_models_metrics, compute_estimators_metrics
 from utils.visualization_tools import plot_model_metrics
 
+###################################################
+####### VARIABLES DE BASE ET CALLBACKS ############
+###################################################
+
+keras.utils.set_random_seed(72)
+
+# Nombre d'itération / taille de batch
+N_MAX_EPOCH = 100
+BATCH_SIZE = 32
+
+# Liste de callbacks à utiliser dans les modèles
+class LRHistory(keras.callbacks.Callback):
+    """
+    Classe permettant de construire un callback customisé
+    pour stocker le taux d'apprentissage à chaque epoch
+    """
+
+    def on_train_begin(self, logs=None):
+        self.lrs: list = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        lr: float = float(self.model.optimizer._get_current_learning_rate().value)
+        self.lrs.append(float(lr))
+
+callbacks = [
+    keras.callbacks.EarlyStopping(
+        monitor="val_loss",
+        patience = 5,
+        restore_best_weights=True
+    ),
+
+    keras.callbacks.ReduceLROnPlateau(
+        monitor = "val_loss",
+        factor = 0.05,
+        patience = 5,
+        min_delta = 1e-6,
+        verbose = 0
+    ),
+
+    LRHistory()
+]
+
 ################################################################
 ####### CONSTRUCTION DES DONNEES (FEATURES ET LABEL) ###########
 ################################################################
 
 # Paramètres
-cryptos = [
-    "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", 
-    "SOLUSDT", "ADAUSDT", "DOGEUSDT", "DOTUSDT", 
-    "MATICUSDT", "TRXUSDT"
-    ]
-nb_assets = len(cryptos)
-nb_epochs = 100
-year = 2023
-month = 9
-daily = True
+
+# Définition des périodes de récupération
+train_period: list = [(2023,7), (2023,8), (2023, 9), (2023,10)]
+test_period: list = [(2023,11)]
+
+# Choix lié à l'utilisation des indicateurs de dépendance sérielle
+use_serial_dependance: bool = False
+
+# Définition des actifs à récupérer
+cryptos_train: list = ["ETHUSDT", "BNBUSDT", "XRPUSDT", "SOLUSDT", "ADAUSDT", "DOTUSDT"]
+cryptos_test: list = ["MATICUSDT", "TRXUSDT"]
+
+# Création du datamanager pour gérer les données d'entrainement + import
+manager_train: DataManager = DataManager(symbols=cryptos_train, dates=train_period)
+manager_train.download_and_prepare_data()
+
+# Construction des features / labels pour les données d'entrainement
+feature_paths = manager_train.build_features(use_serial_dependance)
+labels_paths = manager_train.build_labels()
+
+
+
+
+
+
 
 # Téléchargement et préparation des données
 manager = DataManager(cryptos, year, month)
@@ -76,23 +132,23 @@ X_test_scaled = scaler_X.transform(X_test).reshape(X_test.shape)
 # Formatage des données pour les modèles MLP
 X_train_mlp, y_train_mlp = manager.format_data(
     X_train_scaled,
-    y_train_scaled, 
+    y_train_scaled,
     model_type='mlp',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets
     )
 X_val_mlp, y_val_mlp = manager.format_data(
     X_val_scaled,
-    y_val_scaled, 
+    y_val_scaled,
     model_type='mlp',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets
     )
 X_test_mlp, y_test_mlp = manager.format_data(
     X_test_scaled,
-    y_test_scaled, 
+    y_test_scaled,
     model_type='mlp',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets
     )
 
@@ -100,9 +156,9 @@ X_test_mlp, y_test_mlp = manager.format_data(
 input_shape = X_train_mlp.shape
 simple_mlp_model = create_mlp_model(input_shape, model_type="simple", hidden_dims=[128, 64, 32])
 simple_mlp_model.fit(
-    X_train_mlp, 
-    y_train_mlp, 
-    validation_data=(X_val_mlp, y_val_mlp), 
+    X_train_mlp,
+    y_train_mlp,
+    validation_data=(X_val_mlp, y_val_mlp),
     epochs=nb_epochs,
     callbacks=[
         keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -113,9 +169,9 @@ simple_mlp_model.fit(
 input_shape = X_train_mlp.shape
 res_mlp_model = create_mlp_model(input_shape, model_type="residual", hidden_dims=[128, 64, 32])
 res_mlp_model.fit(
-    X_train_mlp, 
-    y_train_mlp, 
-    validation_data=(X_val_mlp, y_val_mlp), 
+    X_train_mlp,
+    y_train_mlp,
+    validation_data=(X_val_mlp, y_val_mlp),
     epochs=nb_epochs,
     callbacks=[
     keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -129,23 +185,23 @@ res_mlp_model.fit(
 # Formatage des données pour les modèles CNN
 X_train_cnn, y_train_cnn = manager.format_data(
     X_train_scaled,
-    y_train_scaled, 
+    y_train_scaled,
     model_type='cnn',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets
     )
 X_val_cnn, y_val_cnn = manager.format_data(
     X_val_scaled,
-    y_val_scaled, 
+    y_val_scaled,
     model_type='cnn',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets
     )
 X_test_cnn, y_test_cnn = manager.format_data(
     X_test_scaled,
-    y_test_scaled, 
+    y_test_scaled,
     model_type='cnn',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets
     )
 
@@ -153,9 +209,9 @@ X_test_cnn, y_test_cnn = manager.format_data(
 input_shape = X_train_cnn.shape[1:]
 simple_cnn_model = create_cnn_model(input_shape, model_type="simple")
 simple_cnn_model.fit(
-    X_train_cnn, 
-    y_train_cnn, 
-    validation_data=(X_val_cnn, y_val_cnn), 
+    X_train_cnn,
+    y_train_cnn,
+    validation_data=(X_val_cnn, y_val_cnn),
     epochs=nb_epochs
     )
 
@@ -163,9 +219,9 @@ simple_cnn_model.fit(
 input_shape = X_train_cnn.shape[1:]
 bgr_cnn_model = create_cnn_model(input_shape, model_type="bgr")
 bgr_cnn_model.fit(
-    X_train_cnn, 
-    y_train_cnn, 
-    validation_data=(X_val_cnn, y_val_cnn), 
+    X_train_cnn,
+    y_train_cnn,
+    validation_data=(X_val_cnn, y_val_cnn),
     epochs=nb_epochs,
     callbacks=[
     keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -179,56 +235,56 @@ bgr_cnn_model.fit(
 # Formatage des données pour les modèles LSTM et GRU
 X_train_rnn, y_train_rnn = manager.format_data(
     X_train_scaled,
-    y_train_scaled, 
+    y_train_scaled,
     model_type='rnn',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets,
     )
 X_val_rnn, y_val_rnn = manager.format_data(
     X_val_scaled,
-    y_val_scaled, 
+    y_val_scaled,
     model_type='rnn',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets,
     )
 X_test_rnn, y_test_rnn = manager.format_data(
     X_test_scaled,
-    y_test_scaled, 
+    y_test_scaled,
     model_type='rnn',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets,
     )
 
 # Création et entraînement du modèle LSTM
 input_shape = X_train_rnn.shape[1:]
 lstm_model = create_rnn_model(
-    input_shape, 
+    input_shape,
     nb_assets,
     LSTM(units=100, return_sequences=False, dropout=0.2),
     False
 )
 lstm_model.fit(
-    X_train_rnn, 
-    y_train_rnn, 
-    validation_data=(X_val_rnn, y_val_rnn), 
+    X_train_rnn,
+    y_train_rnn,
+    validation_data=(X_val_rnn, y_val_rnn),
     epochs=nb_epochs,
     callbacks=[
     keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    ] 
+    ]
 )
 
 # Création et entraînement du modèle GRU
 input_shape = X_train_cnn.shape[1:]
 gru_model = create_rnn_model(
-    input_shape, 
+    input_shape,
     nb_assets,
     GRU(units=100, return_sequences=False, dropout=0.3),
     False
 )
 gru_model.fit(
-    X_train_rnn, 
-    y_train_rnn, 
-    validation_data=(X_val_rnn, y_val_rnn), 
+    X_train_rnn,
+    y_train_rnn,
+    validation_data=(X_val_rnn, y_val_rnn),
     epochs=nb_epochs,
     callbacks=[
         keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -239,27 +295,27 @@ gru_model.fit(
 # Formatage des données pour le modèle TKAN
 X_train_tkan, y_train_tkan = manager.format_data(
     X_train_scaled,
-    y_train_scaled, 
+    y_train_scaled,
     model_type='seq',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets,
     window=5
     )
 
 X_val_tkan, y_val_tkan = manager.format_data(
     X_val_scaled,
-    y_val_scaled, 
+    y_val_scaled,
     model_type='seq',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets,
     window=5
     )
 
 X_test_tkan, y_test_tkan = manager.format_data(
     X_test_scaled,
-    y_test_scaled, 
+    y_test_scaled,
     model_type='seq',
-    daily=daily, 
+    daily=daily,
     nb_assets=nb_assets,
     window=5
     )
@@ -267,15 +323,15 @@ X_test_tkan, y_test_tkan = manager.format_data(
 # Création et entraînement du modèle TKAN
 input_shape = X_train_tkan.shape[1:]
 tkan_model = create_rnn_model(
-    input_shape, 
+    input_shape,
     nb_assets,
     TKAN(units=100, num_heads=4, return_sequences=False),
     False
 )
 tkan_model.fit(
-    X_train_tkan, 
-    y_train_tkan, 
-    validation_data=(X_val_tkan, y_val_tkan), 
+    X_train_tkan,
+    y_train_tkan,
+    validation_data=(X_val_tkan, y_val_tkan),
     epochs=nb_epochs,
     callbacks=[
         keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -298,9 +354,9 @@ cnn_lstm_model = create_rnn_model(
     conv_activation="relu"
 )
 cnn_lstm_model.fit(
-    X_train_rnn, 
-    y_train_rnn, 
-    validation_data=(X_val_rnn, y_val_rnn), 
+    X_train_rnn,
+    y_train_rnn,
+    validation_data=(X_val_rnn, y_val_rnn),
     epochs=nb_epochs,
     callbacks=[
         keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -311,15 +367,15 @@ cnn_gru_model = create_rnn_model(
     input_shape=input_shape,
     nb_assets=nb_assets,
     rnn_layer=GRU(units=100, return_sequences=False, dropout=0.3),
-    use_conv=True,                             
-    conv_filters=64,                            
-    conv_kernel_size=3,                
-    conv_activation="relu"      
+    use_conv=True,
+    conv_filters=64,
+    conv_kernel_size=3,
+    conv_activation="relu"
 )
 cnn_gru_model.fit(
-    X_train_rnn, 
-    y_train_rnn, 
-    validation_data=(X_val_rnn, y_val_rnn), 
+    X_train_rnn,
+    y_train_rnn,
+    validation_data=(X_val_rnn, y_val_rnn),
     epochs=nb_epochs,
     callbacks=[
         keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -353,13 +409,13 @@ df_dl_models = compile_models_metrics(
         "CNN-GRU": cnn_gru_model
     },
     X_test=[
-        X_test_mlp, X_test_mlp, 
+        X_test_mlp, X_test_mlp,
         X_test_cnn, X_test_cnn,
-        X_test_rnn, X_test_rnn, X_test_tkan, 
+        X_test_rnn, X_test_rnn, X_test_tkan,
         X_test_rnn, X_test_rnn
     ],
     y_test=[
-        y_test_mlp.reshape(-1,1), y_test_mlp.reshape(-1,1), 
+        y_test_mlp.reshape(-1,1), y_test_mlp.reshape(-1,1),
      y_test_cnn.reshape(-1,1), y_test_cnn.reshape(-1,1),
      y_test_rnn.reshape(-1,1), y_test_rnn.reshape(-1,1), y_test_tkan.reshape(-1,1),
      y_test_rnn.reshape(-1,1), y_test_rnn.reshape(-1,1)

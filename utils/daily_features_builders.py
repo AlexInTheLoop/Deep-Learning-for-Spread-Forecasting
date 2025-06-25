@@ -34,7 +34,7 @@ def get_basic_features(symbol, date, group):
                 tick_size = float(f["tickSize"])
                 break
     except Exception as e:
-        print(f"⚠️ Erreur récupération tick_size : {e}")
+        print(f"Erreur récupération tick_size : {e}")
     
     row = {
             "day": date.day,

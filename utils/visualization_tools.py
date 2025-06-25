@@ -1,6 +1,9 @@
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+import numpy as np
+import matplotlib.pyplot as plt
 
 def plot_model_metrics(df):
     metrics = {
@@ -31,3 +34,71 @@ def plot_model_metrics(df):
     title = "Comparaison des performances des méthodes de prédiction du spread moyen journalier"
     fig.update_layout(height=800, width=1000, title_text=title)
     return fig
+
+def evaluate_and_plot(model,
+                      X,
+                      y,
+                      scaler_y=None,
+                      title="Modèle",
+                      history=None,         
+                      show_metrics=True):
+ 
+
+    # Prédictions
+    y_pred = model.predict(X, verbose=0)
+
+    # Dénormalisation éventuelle
+    if scaler_y is not None:
+        y_true = scaler_y.inverse_transform(y.reshape(-1, 1)).ravel()
+        y_pred = scaler_y.inverse_transform(y_pred).ravel()
+    else:
+        y_true = y.ravel()
+        y_pred = y_pred.ravel()
+
+    # Métriques
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae  = mean_absolute_error(y_true, y_pred)
+    r2   = r2_score(y_true, y_pred)
+    if show_metrics:
+        print(f"{title} – Test | RMSE={rmse:.4f}  MAE={mae:.4f}  R²={r2:.4f}")
+
+    #Plot 1 : trajectoire 
+    plt.figure(figsize=(12,5))
+    plt.plot(y_true, label="Spread réel", lw=2)
+    plt.plot(y_pred, label="Spread prédit", alpha=0.8)
+    plt.title(f"{title} – vrai vs préd")
+    plt.xlabel("Jour (chronologique)")
+    plt.ylabel("Spread")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    #  Plot 2 : scatter 
+    plt.figure(figsize=(6,6))
+    plt.scatter(y_true, y_pred, alpha=0.6)
+    lo, hi = min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())
+    plt.plot([lo, hi], [lo, hi], "k--")
+    plt.title(f"{title} – Dispersion")
+    plt.xlabel("Spread réel")
+    plt.ylabel("Spread prédit")
+    plt.tight_layout()
+    plt.show()
+
+    # Plot 3 : historique des losses 
+    if history is not None and hasattr(history, "history"):
+        hist = history.history
+        if "loss" in hist:
+            plt.figure(figsize=(8,4))
+            plt.plot(hist["loss"],     label="Train loss")
+            if "val_loss" in hist:
+                plt.plot(hist["val_loss"], label="Val loss")
+            plt.title(f"{title} – courbe des losses")
+            plt.xlabel("Epoch")
+            plt.ylabel("Loss (MSE)")
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+        else:
+            print("  'loss' non présent dans l'objet History fourni.")
+
+    return {"rmse": rmse, "mae": mae, "r2": r2}

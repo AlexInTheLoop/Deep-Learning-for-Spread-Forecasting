@@ -582,7 +582,7 @@ class DataManager:
         file_path = os.path.join(self.parametric_estimators_dir, filename)
 
         if os.path.exists(file_path):
-            print(f"✅ Fichier déjà existant, pas de recalcul : {file_path}")
+            print(f"Fichier déjà existant, pas de recalcul : {file_path}")
             return pd.read_parquet(file_path)
 
         df = pd.DataFrame(X, columns=["day", "open", "high", "low", "close", "volume"])
@@ -610,7 +610,7 @@ class DataManager:
         df_concat = pd.concat(list_dfs, axis=0, ignore_index=True)
         os.makedirs(self.parametric_estimators_dir, exist_ok=True)
         df_concat.to_parquet(file_path, index=False)
-        print(f"✅ Estimations sauvegardées dans : {file_path}")
+        print(f"Estimations sauvegardées dans : {file_path}")
         return df_concat
 
     def generate_meta_from_X(self, X, sort_mode="asset_first", minutes_per_day=1440):

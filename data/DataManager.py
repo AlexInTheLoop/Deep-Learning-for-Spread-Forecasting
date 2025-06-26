@@ -9,10 +9,7 @@ from sklearn.model_selection import train_test_split
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.daily_features_builders import (
-get_serial_dependancy_features_v2,
-normalize
-)
+from utils.daily_features_builders import (get_serial_dependancy_features_v2,normalize)
 from utils.res_comp import get_parametric_estimators_series
 
 RAW_DATA_DIR = "raw data"
@@ -165,11 +162,8 @@ class DataManager:
     def load_features(self, serial_dependency:bool = False, clean_features: bool = False, use_tick_size: bool = False):
         """
         Méthode permettant de sauvegarder les features intra-day utilisées pour estimer les modèles.
-
-        Arguments :
-        - serial_dependancy: booléen pour déterminer s'il faut utiliser des features de dépendance sérielle ou non
-        - do_aggregate : booléen pour déterminer s'il faut agréger les données de la séquence (MLP, ...)
         """
+
         processed_paths = []
 
         # Retraitement sur les jours pour garantir l'uniformisation des données
@@ -177,7 +171,7 @@ class DataManager:
         nb_minute_per_day:int = 1440
         nb_sequences:int = nb_days * nb_minute_per_day
 
-        # Cas où l'utilisateur souhaite supprimer les features créées précédemment
+        # Si on souhaite supprimer les features créées précédemment
         if clean_features:
             self._clean_features("features")
 
@@ -204,7 +198,7 @@ class DataManager:
                 # Construction des features intraday avec / sans dépendance sérielle
                 df_out = self.build_features(parquet_path, use_serial_dependency=serial_dependency)
 
-                # Cas où l'utilisateur souhaite utiliser le ticksize comme feature
+                # Si on souhaite utiliser le ticksize comme feature
                 if use_tick_size:
                     tick_size: float = self._load_ticksize(symbol)
                     df_out["ticksize"] = tick_size
@@ -685,15 +679,9 @@ class DataManager:
         return dataset
     
     @staticmethod
-    def format_data(
-        X,
-        y,
-        model_type,
-        daily=True,
-        nb_assets=None,
-        minutes_per_day=1440,
-        window=None
-    ):
+    def format_data(X,y,model_type,daily=True,nb_assets=None,minutes_per_day=1440,window=None):
+   
+    
         if nb_assets is None:
             raise ValueError("nb_assets doit être spécifié")
 
@@ -763,7 +751,7 @@ class DataManager:
         file_path = os.path.join(self.parametric_estimators_dir, filename)
 
         if os.path.exists(file_path):
-            print(f"✅ Fichier déjà existant, pas de recalcul : {file_path}")
+            print(f"Fichier déjà existant, pas de recalcul : {file_path}")
             return pd.read_parquet(file_path)
 
         df = pd.DataFrame(X, columns=["day", "open", "high", "low", "close", "volume"])
@@ -772,14 +760,14 @@ class DataManager:
         list_dfs = []
 
         for asset in self.symbols:
-            print(f"📊 Traitement de l'actif {asset}...")
+            print(f"Traitement de l'actif {asset}...")
 
             asset_mask = meta_subset["symbol"] == asset
             meta_asset = meta_subset[asset_mask]
             df_asset = df.loc[asset_mask.values]
 
             if df_asset.empty:
-                print(f"⚠️ Aucun point trouvé pour {asset}, on passe.")
+                print(f"Aucun point trouvé pour {asset}, on passe.")
                 continue
 
             df_result = get_parametric_estimators_series(df_asset.values, meta_asset, use_opposed)
@@ -791,7 +779,7 @@ class DataManager:
         df_concat = pd.concat(list_dfs, axis=0, ignore_index=True)
         os.makedirs(self.parametric_estimators_dir, exist_ok=True)
         df_concat.to_parquet(file_path, index=False)
-        print(f"✅ Estimations sauvegardées dans : {file_path}")
+        print(f"Estimations sauvegardées dans : {file_path}")
         return df_concat
 
     def generate_meta_from_X(self, X, sort_mode="asset_first", minutes_per_day=1440):

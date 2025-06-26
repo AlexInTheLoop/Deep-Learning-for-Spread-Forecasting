@@ -4,11 +4,12 @@ class MLP(Model):
     """
     MLP classique entièrement connecté, sans normalisation ni skip connections.
     """
-    def __init__(self, input_dim, hidden_dims=[64, 32], **kwargs):
+    def __init__(self, input_dim, hidden_dims=[64, 32],output_activation='softplus', **kwargs):
         super().__init__(**kwargs)
         self.flatten = layers.Flatten()
         self.hidden_layers = [layers.Dense(h, activation='relu') for h in hidden_dims]
-        self.out = layers.Dense(1)
+        #self.out = layers.Dense(1)
+        self.out = layers.Dense(1, activation=output_activation)
 
     def call(self, inputs, training=False):
         x = self.flatten(inputs)
@@ -45,12 +46,12 @@ class MLPResidualRegressor(Model):
     MLP profond utilisant des blocs résiduels normalisés pour améliorer l'apprentissage
     dans des tâches complexes ou à forte dimensionnalité.
     """
-    def __init__(self, input_dim, hidden_dims=[128, 64, 32], dropout_rate=0.1, **kwargs):
+    def __init__(self, input_dim, hidden_dims=[128, 64, 32],output_activation='softplus', dropout_rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.flatten = layers.Flatten()
         self.input_norm = layers.LayerNormalization()
         self.blocks = [ResidualMLPBlock(h, dropout_rate) for h in hidden_dims]
-        self.out = layers.Dense(1, activation='softplus')
+        self.out = layers.Dense(1, activation=output_activation)
 
     def call(self, inputs, training=False):
         x = self.flatten(inputs)
@@ -59,7 +60,7 @@ class MLPResidualRegressor(Model):
             x = block(x, training=training)
         return self.out(x)
 
-def create_mlp_model(input_shape, model_type="simple", **kwargs):
+def create_mlp_model(input_shape, model_type="simple",output_activation='softplus', **kwargs):
     """
     Crée un modèle MLP.
 
@@ -75,11 +76,11 @@ def create_mlp_model(input_shape, model_type="simple", **kwargs):
     total_input_dim = seq_len * input_dim
 
     if model_type == "simple":
-        model = MLP(input_dim=total_input_dim, **kwargs)
+        model = MLP(input_dim=total_input_dim,output_activation=output_activation, **kwargs)
         model.compile(optimizer='adam', loss='mse')
         return model
     elif model_type == "residual":
-        model = MLPResidualRegressor(input_dim=total_input_dim, **kwargs)
+        model = MLPResidualRegressor(input_dim=total_input_dim,output_activation=output_activation, **kwargs)
         model.compile(optimizer='adam', loss='mse')
         return model
     else:

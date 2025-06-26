@@ -85,44 +85,44 @@ def compute_parametric_estimators(data, use_opposed=False):
         mid_arr   = (high_arr + low_arr) / 2.0
         log_mid   = np.log(mid_arr)
     except Exception as e:
-        print("❌ Erreur lors du calcul des log-prices : ", e)
+        print("Erreur lors du calcul des log-prices : ", e)
         return np.zeros(9, dtype=float)
 
     try:
         H = hurst_estimator.estimateur_Hurst(log_close, L=5)
     except Exception as e:
-        print("❌ Erreur dans estimateur_Hurst : ", e)
+        print("Erreur dans estimateur_Hurst : ", e)
         H = 0.0
 
     try:
         S1 = grb_estimator.estimateur_grb1_close(log_close, 10, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec estimateur_grb1_close : ", e)
+        print("Erreur avec estimateur_grb1_close : ", e)
         S1 = 0.0
 
     try:
         S2 = grb_estimator2.estimateur_grb2_close(log_close, 10, H, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec estimateur_grb2_close : ", e)
+        print("Erreur avec estimateur_grb2_close : ", e)
         S2 = 0.0
 
     try:
         S3 = grb_estimator3.estimateur_grb3_close(log_close, 10, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec estimateur_grb3_close : ", e)
+        print("Erreur avec estimateur_grb3_close : ", e)
         S3 = 0.0
 
     try:
         tmp = grb_estimator4.estimateur_grb4_close(log_close, 10)
         S4 = tmp["Spread"] if isinstance(tmp, dict) and "Spread" in tmp else float(tmp)
     except Exception as e:
-        print("❌ Erreur avec estimateur_grb4_close : ", e)
+        print("Erreur avec estimateur_grb4_close : ", e)
         S4 = 0.0
 
     try:
         Roll_spread = roll_estimator.Roll_estimateur(log_close, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec Roll_estimateur : ", e)
+        print("Erreur avec Roll_estimateur : ", e)
         Roll_spread = 0.0
 
     try:
@@ -132,25 +132,25 @@ def compute_parametric_estimators(data, use_opposed=False):
             use_oposed=use_opposed
             )
     except Exception as e:
-        print("❌ Erreur avec corwinSchultz : ", e)
+        print("Erreur avec corwinSchultz : ", e)
         CS_spread = 0.0
 
     try:
         AGK1 = ardia_estimator.edge_close_price(log_close, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec edge_close_price : ", e)
+        print("Erreur avec edge_close_price : ", e)
         AGK1 = 0.0
 
     try:
         AGK2 = ardia_estimator.edge(open_arr, high_arr, low_arr, close_arr, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec edge : ", e)
+        print("Erreur avec edge : ", e)
         AGK2 = 0.0
 
     try:
         AR_spread = AR_estimator.AR_estimateur(log_close, log_mid, use_opposed)
     except Exception as e:
-        print("❌ Erreur avec AR_estimator : ", e)
+        print("Erreur avec AR_estimator : ", e)
         AR_spread = 0.0
 
     estimators[:] = [

@@ -2,7 +2,7 @@ from keras import Model, layers
 import tensorflow as tf
 
 class CNN(Model):
-    def __init__(self, input_shape, **kwargs):
+    def __init__(self, input_shape,output_activation='softplus', **kwargs):
         super().__init__(**kwargs)
         seq_len, in_channels = input_shape
 
@@ -27,7 +27,7 @@ class CNN(Model):
         self.flatten = layers.Flatten()
         self.fc1 = layers.Dense(128, activation='relu')
         self.dropout = layers.Dropout(0.2)
-        self.fc2 = layers.Dense(1, activation='softplus')  # sortie scalaire, toujours positive
+        self.fc2 = layers.Dense(1, activation=output_activation)  # sortie scalaire, toujours positive
 
     def call(self, inputs, training=False):
         x = self.conv1(inputs)
@@ -57,8 +57,6 @@ class CNN(Model):
 class BGR(Model):
     """
     CNN 1D profond et robuste pour séries multivariées.
-    - Blocs conv-BN-ReLU-(pool) dynamiques
-    - Désactivation automatique du pooling si séquence trop courte
     """
     def __init__(self,
                  input_shape,
@@ -111,20 +109,12 @@ class BGR(Model):
         return self.fc2(x)
     
 
-def create_cnn_model(input_shape, model_type="simple", **kwargs):
+def create_cnn_model(input_shape, model_type="simple",output_activation='softplus', **kwargs):
     """
     Crée un modèle CNN compatible avec une entrée 3D (batch, seq_len, input_dim).
-
-    Inputs:
-        input_shape (tuple): (sequence_length, input_dim)
-        model_type (str): "simple" ou "bgr"
-        **kwargs: paramètres spécifiques au modèle
-
-    Output:
-        keras.Model: instance du CNN
     """
     if model_type == "simple":
-        model = CNN(input_shape=input_shape, **kwargs)
+        model = CNN(input_shape=input_shape,output_activation=output_activation,**kwargs)
         model.compile(optimizer='adam', loss='mse')
         return model
     elif model_type == "bgr":

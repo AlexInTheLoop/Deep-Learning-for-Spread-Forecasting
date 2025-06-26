@@ -5,15 +5,6 @@ import numpy as np
 def compute_model_metrics(model, X_test, y_test, y_scaler=None, name=None):
     """
     Calcule les métriques d'évaluation pour le modèle sur l'ensemble de test.
-    
-    Inputs:
-        model: Trained model
-        X_test: Test features
-        y_test: True labels for the test set
-        y_scaler: scaler pour la transformation inverse des prédictions
-
-    Outputs:
-        set: (R², RMSE, MAE)
     """
     y_pred = model.predict(X_test)
 
@@ -34,15 +25,6 @@ def compute_model_metrics(model, X_test, y_test, y_scaler=None, name=None):
 def compile_models_metrics(models, X_test, y_test, y_scaler=None):
     """
     Compile les métriques pour plusieurs modèles.
-    
-    Inputs:
-        models: Dictionnaire de modèles avec leurs noms
-        X_test: liste des features de test
-        y_test: liste des labels de test
-        y_scaler: scaler pour la transformation inverse des prédictions
-
-    Outputs:
-        dict: Dictionnaire des métriques pour chaque modèle
     """
     metrics = {}
     for i, (name, model) in enumerate(models.items()):
@@ -54,18 +36,6 @@ def compute_estimators_metrics(df_estimators,
                                 sort_mode = "asset_first"):
     """
     Calcule les métriques R², RMSE, MAE et Score pour chaque estimateur de spread.
-
-    Inputs :
-        df_estimators : DataFrame contenant les colonnes d'estimateurs.
-
-    y_true : array de spreads journaliers réels.
-
-    sort_mode : Organisation du DataFrame d’entrée :
-        - "asset_first" : données triées par actif puis par jour.
-        - "day_first"   : données triées par jour puis par actif.
-
-    Output :
-        DataFrame (4, nb_estimateurs) avec lignes : R², RMSE, MAE, Score.
     """
     df = df_estimators.copy()
 
@@ -92,7 +62,6 @@ def compute_estimators_metrics(df_estimators,
         r2 = r2_score(y_true, y_pred)
         rmse = root_mean_squared_error(y_true, y_pred)
         mae = mean_absolute_error(y_true, y_pred)
-        score = (r2 + 1/rmse + 1/mae) / 3
-        results[col] = {"R²": r2, "RMSE": rmse, "MAE": mae, "Score": score}
+        results[col] = {"R²": r2, "RMSE": rmse, "MAE": mae}
 
     return pd.DataFrame(results)

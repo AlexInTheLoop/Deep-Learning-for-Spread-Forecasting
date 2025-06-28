@@ -184,5 +184,9 @@ def create_rnn_model(
     outputs = layers.Dense(1, activation="softplus")(x)
 
     model = Model(inputs, outputs)
+
+    # Affichage du modèle
+    model.summary()
+
     model.compile(optimizer="adam", loss="mse", metrics=["mae"])
     return model

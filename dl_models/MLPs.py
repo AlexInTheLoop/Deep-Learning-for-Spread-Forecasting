@@ -1,4 +1,4 @@
-from keras import Model, layers, callbacks
+from keras import Model, layers, callbacks, optimizers
 
 class MLP(Model):
     """
@@ -8,7 +8,7 @@ class MLP(Model):
         super().__init__(**kwargs)
         self.flatten = layers.Flatten()
         self.hidden_layers = [layers.Dense(h, activation='relu') for h in hidden_dims]
-        self.out = layers.Dense(1)
+        self.out = layers.Dense(1, activation = "softplus") # pour garantir un spread positif
 
     def call(self, inputs, training=False):
         x = self.flatten(inputs)
@@ -50,13 +50,14 @@ class MLPResidualRegressor(Model):
         self.flatten = layers.Flatten()
         self.input_norm = layers.LayerNormalization()
         self.blocks = [ResidualMLPBlock(h, dropout_rate) for h in hidden_dims]
-        self.out = layers.Dense(1, activation='softplus')
+        self.out = layers.Dense(1, activation='linear')
 
     def call(self, inputs, training=False):
         x = self.flatten(inputs)
         x = self.input_norm(x)
         for block in self.blocks:
             x = block(x, training=training)
+        self.built = True
         return self.out(x)
 
 def create_mlp_model(input_shape, model_type="simple", **kwargs):
@@ -76,7 +77,8 @@ def create_mlp_model(input_shape, model_type="simple", **kwargs):
 
     if model_type == "simple":
         model = MLP(input_dim=total_input_dim, **kwargs)
-        model.compile(optimizer='adam', loss='mse')
+        # Affichage du modèle
+        model.compile(optimizers.Adam(learning_rate=1e-3), loss='mse')
         return model
     elif model_type == "residual":
         model = MLPResidualRegressor(input_dim=total_input_dim, **kwargs)

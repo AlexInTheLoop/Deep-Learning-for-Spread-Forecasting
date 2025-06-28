@@ -3,7 +3,8 @@ from plotly.subplots import make_subplots
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import numpy as np
 import matplotlib.pyplot as plt
-
+import pandas as pd
+from IPython.display import display
 
 def plot_model_metrics(df):
     metrics = {
@@ -35,13 +36,8 @@ def plot_model_metrics(df):
     return fig
 
 
-def evaluate_and_plot(model,
-                      X,
-                      y,
-                      scaler_y=None,
-                      title="Modèle",
-                      history=None,
-                      show_metrics=True):
+def evaluate_and_plot(model, X, y, scaler_y=None, title="Modèle", history=None, paper_metrics=None, paper_daily=None,
+                      y_true_daily=None, show_metrics=True):
     # Prédictions
     y_pred = model.predict(X, verbose=0)
 
@@ -56,20 +52,9 @@ def evaluate_and_plot(model,
     # Métriques
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
-    r2 = r2_score(y_true, y_pred)
-    if show_metrics:
-        print(f"{title} – Test | RMSE={rmse:.4f}  MAE={mae:.4f}  R²={r2:.4f}")
 
-    # Plot 1 : trajectoire
-    plt.figure(figsize=(12, 5))
-    plt.plot(y_true, label="Spread réel", lw=2)
-    plt.plot(y_pred, label="Spread prédit", alpha=0.8)
-    plt.title(f"{title} – vrai vs préd")
-    plt.xlabel("Jour (chronologique)")
-    plt.ylabel("Spread")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+    if show_metrics:
+        print(f"{title} – Test | RMSE={rmse:.4f}  MAE={mae:.4f}")
 
     #  Plot 2 : scatter
     plt.figure(figsize=(6, 6))
@@ -99,4 +84,36 @@ def evaluate_and_plot(model,
         else:
             print("  'loss' non présent dans l'objet History fourni.")
 
-    return {"rmse": rmse, "mae": mae, "r2": r2}
+    if paper_daily is not None and y_true_daily is not None:
+        # erreurs papier
+        df_err = paper_daily.apply(lambda c: np.abs(c - y_true_daily))
+
+        # erreur modèle
+        err_model = np.abs(y_pred - y_true_daily)
+        df_err[title] = err_model
+
+        plt.figure(figsize=(10, 4))
+        plt.boxplot([df_err[c] for c in df_err.columns],
+                    labels=df_err.columns,
+                    showmeans=True)
+        plt.xticks(rotation=45, ha="right")
+        plt.ylabel("Erreur absolue")
+        plt.title("Box-plot erreurs journalières")
+        plt.tight_layout();
+        plt.show()
+
+    df_model = pd.DataFrame(
+        {title: {"RMSE": rmse, "MAE": mae}}
+    ).T
+
+    if paper_metrics is not None:
+        # aligne colonnes éventuelles manquantes
+        df_compare = pd.concat([paper_metrics, df_model], axis=0, sort=False)
+    else:
+        df_compare = df_model
+
+    # Affiche le tableau
+    if show_metrics:
+        display(df_compare)
+
+    return df_compare

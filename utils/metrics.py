@@ -93,6 +93,6 @@ def compute_estimators_metrics(df_estimators,
         rmse = root_mean_squared_error(y_true, y_pred)
         mae = mean_absolute_error(y_true, y_pred)
         score = (r2 + 1/rmse + 1/mae) / 3
-        results[col] = {"R²": r2, "RMSE": rmse, "MAE": mae, "Score": score}
+        results[col] = {"R²": r2, "RMSE": rmse, "MAE": mae}
 
     return pd.DataFrame(results)

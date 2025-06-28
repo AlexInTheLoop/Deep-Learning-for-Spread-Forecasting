@@ -1,3 +1,4 @@
+import keras.optimizers
 from keras import Model, layers
 import tensorflow as tf
 
@@ -51,6 +52,7 @@ class CNN(Model):
         x = self.flatten(x)
         x = self.fc1(x)
         x = self.dropout(x, training=training)
+        self.built = True
         return self.fc2(x)
 
 
@@ -125,11 +127,15 @@ def create_cnn_model(input_shape, model_type="simple", **kwargs):
     """
     if model_type == "simple":
         model = CNN(input_shape=input_shape, **kwargs)
-        model.compile(optimizer='adam', loss='mse')
+        # Affichage du modèle
+        model.compile(keras.optimizers.Adam(learning_rate=1e-3),
+                      loss='mse',
+                      jit_compile=True)
         return model
     elif model_type == "bgr":
         model = BGR(input_shape=input_shape, **kwargs)
-        model.compile(optimizer='adam', loss='mse')
+        # Affichage du modèle
+        model.compile(keras.optimizers.Adam(learning_rate=1e-3), loss='mse')
         return model
     else:
         raise ValueError(f"Modèle inconnu '{model_type}'. Utiliser 'simple' ou 'bgr'.")

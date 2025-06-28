@@ -244,7 +244,7 @@ class DataManager:
             else:
                 file_path = os.path.join(self.minute_features_data_dir, f)
             os.remove(file_path)
-        print("Suppression des fichiers de features terminée")
+        print(f"Suppression des fichiers de {elem_model} terminée")
 
     @staticmethod
     def _load_ticksize(symbol: str)->float:
@@ -312,7 +312,7 @@ class DataManager:
         df_features["volume_change"] = df_features["volume"].pct_change().fillna(0)
         df_features["rolling_mean_volume"] = df_features["volume"].rolling(window=10, min_periods=1).mean().fillna(df_features["volume"])
 
-        # Calcul du spread High - Low du jour et de son évolution entre deux dates (en VA)
+        # Calcul du spread High - Low par minute et de son évolution entre deux dates (en VA)
         df_features["spread_high_low"] = df_features["high"] - df_features["low"]
         df_features["delta_spread_high_low"] = np.abs(df_features["spread_high_low"].pct_change().fillna(0))
 
@@ -403,16 +403,18 @@ class DataManager:
                 # Récupération du jour
                 df["day"] = df["datetime"].dt.day
 
-                # Calcul des séries bid / ask normalisée
-                df["normalized_ask"] = normalize(df["best_ask_price"])
-                df["normalized_bid"] = normalize(df["best_bid_price"])
+                # Calcul de l'écart moyen
+                df["mid_spread"] = (df["best_ask_price"] + df["best_bid_price"])/2
+
+                # Calcul du spread en % du prix MID
+                df["spread"] = (df["best_ask_price"] - df["best_bid_price"]) / df["mid_spread"]
 
                 # Calcul du spread entre les séries de bid / ask normalisées en valeur absolue (pour garantir que le spread soit positif)
-                df["spread"] = np.abs(df["normalized_ask"] - df["normalized_bid"])
+                # df["spread"] = np.abs(df["normalized_ask"] - df["normalized_bid"])
                 #df["spread"] = df["best_ask_price"] - df["best_bid_price"]
                 #df["spread"] = normalize(df["spread"])
 
-                # Regroupement par jour ==> pas sur pour la normalisation, peut être nul
+                # Regroupement par jour
                 df_daily = df.groupby("day")["spread"].mean().reset_index()
                 df_daily.columns = ["day", "spread_real"]
 
@@ -476,9 +478,6 @@ class DataManager:
                 # Import des données
                 df_feat = pd.read_parquet(feature_path)
                 df_label = pd.read_parquet(label_path)
-
-                # Agrégation de la séquence (cas du MLP, ...) ==> à ajouter ici
-                # df_feat = ...
 
                 # Fusion des dataframes et récupération des features / spread
                 df_merged = pd.merge(df_feat, df_label, on="day", how="inner")
@@ -563,6 +562,75 @@ class DataManager:
             return self._time_series_split_minute(X, y, test_size, val_size)
         else:
             return self._time_series_split_daily(X, y, test_size, val_size)
+
+    def compute_spread_pred(self, y_pred, scaler_y):
+        """
+        Méthode permettant de convertir la sortie du modèle de Deep Learning
+        en spread pour comparer avec les estimateurs de Garcin.
+        """
+        os.makedirs(self.labels_data_dir, exist_ok=True)
+
+        # Liste pour stocker les prix mid pour tous les actif
+        mid_price_list: list = []
+
+        # Double boucle actif / date
+        for symbol in self.symbols:
+            for (year, month) in self.dates:
+                month_str = f"{month:02d}"
+                year_str = str(year)
+                base_name = f"{symbol}-bookTicker-{year_str}-{month_str}"
+                parquet_path = os.path.join(self.raw_data_dir, f"{base_name}.parquet")
+                label_path = os.path.join(self.labels_data_dir, f"{base_name}_labels.parquet")
+
+                # Chargement des booktickers
+                df = pd.read_parquet(parquet_path)
+                if self.light:
+                    df.columns = [
+                        "best_bid_price",
+                        "best_ask_price",
+                        "transaction_time",
+                    ]
+                else:
+                    df.columns = [
+                        "update_id",
+                        "best_bid_price",
+                        "best_bid_qty",
+                        "best_ask_price",
+                        "best_ask_qty",
+                        "transaction_time",
+                        "event_time"
+                    ]
+
+                # si transaction_time n'est pas au format date, conversion
+                if not np.issubdtype(df["transaction_time"].dtype, np.datetime64):
+                    try:
+                        df["datetime"] = pd.to_datetime(df["transaction_time"].astype(np.int64), unit="ms")
+                    except Exception as e:
+                        print("Erreur conversion datetime:", e)
+                        return []
+                else:
+                    df["datetime"] = df["transaction_time"]
+
+                # Récupération du jour
+                df["day"] = df["datetime"].dt.day
+
+                # Calcul de l'écart-moyen
+                df["mid_price"] = (df["best_ask_price"] + df["best_bid_price"]) / 2
+
+                # Regroupement par jour
+                df_daily = df.groupby("day")["mid_price"].mean().reset_index()
+                df_daily.columns = ["day", "mid_price"]
+
+                mid_price_list.append(df_daily["mid_price"].values)
+
+
+        # Rescale du spread en % du prix prédit par le modèle
+        y_pred = scaler_y.inverse_transform(y_pred).ravel()
+
+        # Calcul du spread / jour
+        mid_price = np.concat(mid_price_list).astype(dtype = np.float32)
+        spread_pred = y_pred * mid_price
+        return spread_pred
 
     @staticmethod
     def reduce_labels(y_part, n_min: int):

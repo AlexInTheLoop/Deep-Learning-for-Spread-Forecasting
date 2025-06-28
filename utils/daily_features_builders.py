@@ -35,7 +35,7 @@ def get_basic_features(symbol, date, group):
                 tick_size = float(f["tickSize"])
                 break
     except Exception as e:
-        print(f"⚠️ Erreur récupération tick_size : {e}")
+        print(f"Erreur récupération tick_size : {e}")
     
     row = {
             "day": date.day,
@@ -56,12 +56,6 @@ def get_basic_features(symbol, date, group):
 def get_serial_dependancy_features_v2(df_features: pd.DataFrame)->pd.DataFrame:
     """
     Méthode permettant de calculer et d'ajouter des features de dépendance sérielle pour enrichir l'estimation des modèles
-
-    Input :
-    - df_features : dataframe contenant les features basiques utilisées en intraday pour tous les modèles
-
-    Output :
-    - dataframe contenant toutes les features
     """
 
     # Création d'un dataframe pour stocker les features de dépendance sérielle
@@ -98,8 +92,6 @@ def get_serial_dependancy_features_v2(df_features: pd.DataFrame)->pd.DataFrame:
     sigma_var10 = var10.std() if var10.std() > 0 else 1.0
     var10 = (var10 - mu_var10) / sigma_var10
     df_serial_dependance["var10"] = var10
-
-    # 5eme feature -- à voir (corrélation de la vol sur son passé, ...)
 
     # Concaténation avec le dataframe de features pris en entrée
     df_all_features: pd.DataFrame = pd.concat([df_features, df_serial_dependance], axis=1)

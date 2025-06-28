@@ -516,9 +516,6 @@ class DataManager:
     def build_train_val_dataset(self, val_size = 0.2, is_test: bool = False, do_aggregate: bool = False):
         """
         Méthode permettant de construire les dataframe d'input / output requis pour les modèles
-
-        output :
-        - un dataframe contenant les features pour tous les actifs et toutes les dates
         """
 
         # Récupération des arrays avec les features/label pour tous les actifs date par date
@@ -562,15 +559,10 @@ class DataManager:
     def reduce_labels(y_part, n_min: int):
         """
         fonction  permettant de passer des spread intraday au spread journalier moyen
-
-        arguments :
-        - nb_rows_per_day : nombre de lignes par mois
         """
 
-        # Modification de la dimension de y : passage en 3D (nb_days * nb_months * nb_assets, 1440,1)
-        spread_per_day = y_part.reshape(int(np.ceil(y_part.shape[0] / n_min)), n_min, 1)
 
-        # Calcul de la moyenne intraday
+        spread_per_day = y_part.reshape(int(np.ceil(y_part.shape[0] / n_min)), n_min, 1)
         avg_daily_spread = np.mean(spread_per_day, axis=1)
 
         return avg_daily_spread
@@ -735,12 +727,8 @@ class DataManager:
 
         return X_out.astype(np.float32), y_out.astype(np.float32)
 
-    def compute_and_save_parametric_estimators(
-            self, 
-            X, 
-            use_opposed=False, 
-            sort_mode="asset_first"
-            ):
+    def compute_and_save_parametric_estimators(self,X,use_opposed=False,sort_mode="asset_first"):      
+            
         if sort_mode not in {"asset_first", "day_first"}:
             raise ValueError("sort_mode doit être 'asset_first' ou 'day_first'.")
 

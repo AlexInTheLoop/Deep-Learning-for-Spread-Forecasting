@@ -58,14 +58,14 @@ class LSTM(layers.Layer):
             h_t, c_t = self.lstm_step(x_t, h_t, c_t)
             h_t = self.layernorm(h_t)
             h_t = self.dropout_layer(h_t, training=training)
-            outputs.append(h_t)
 
-        output_sequence = ops.stack(outputs, axis=1)
+            if self.return_sequences:
+                outputs.append(h_t)
 
+        # Return full sequence or just final output
         if self.return_sequences:
-            return output_sequence
-        else:
-            return output_sequence[:, -1, :] 
+            return ops.stack(outputs, axis=1)
+        return h_t
 
 def create_lstm_model(input_shape, nb_assets, units=100, dropout=0.3):
     model = keras.Sequential([
@@ -74,6 +74,16 @@ def create_lstm_model(input_shape, nb_assets, units=100, dropout=0.3):
         layers.Dense(nb_assets,activation='softplus')               
     ])
     model.compile(optimizer="adam", loss='mse', metrics=["mae"])
+    return model
+
+
+def create_lstm_model_v2(nb_assets, units=100, dropout=0.3):
+    model = keras.Sequential([
+        layers.LSTM(units=units, return_sequences=False, dropout = dropout),
+        layers.Dense(nb_assets, activation="softplus")
+    ])
+    optimizer = keras.optimizers.Adam(learning_rate=1e-3)
+    model.compile(optimizer=optimizer, loss="mse", metrics = ["mae"])
     return model
 
 class GRU(layers.Layer):

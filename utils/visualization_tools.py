@@ -4,8 +4,8 @@ from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
-
+from IPython.display import display
+from data.DataManager import DataManager
 
 def plot_model_metrics(df):
     metrics = {
@@ -37,7 +37,8 @@ def plot_model_metrics(df):
     return fig
 
 
-def evaluate_and_plot(model, X,y,scaler_y=None,title="Modèle",history=None,paper_metrics=None,paper_daily=None,y_true_daily=None,show_metrics=True):                  
+def evaluate_and_plot(model, X,y,manager:DataManager, 
+                      scaler_y=None,title="Modèle",history=None,paper_metrics=None,paper_daily=None,y_true_daily=None,show_metrics=True):                  
                       
     # Prédictions
     y_pred = model.predict(X, verbose=0)
@@ -50,6 +51,10 @@ def evaluate_and_plot(model, X,y,scaler_y=None,title="Modèle",history=None,pape
         y_true = y.ravel()
         y_pred = y_pred.ravel()
 
+    # Passage des prévisions du spread en % de l'actif au spread
+    y_true = manager.compute_spread_pred(y_true)
+    y_pred = manager.compute_spread_pred(y_pred)
+
     # Métriques
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     mae = mean_absolute_error(y_true, y_pred)
@@ -57,18 +62,7 @@ def evaluate_and_plot(model, X,y,scaler_y=None,title="Modèle",history=None,pape
     if show_metrics:
         print(f"{title} – Test | RMSE={rmse:.4f}  MAE={mae:.4f}")
 
-    # Plot 1 : trajectoire
-    #plt.figure(figsize=(12, 5))
-    #plt.plot(y_true, label="Spread réel", lw=2)
-    #plt.plot(y_pred, label="Spread prédit", alpha=0.8)
-    #plt.title(f"{title} – vrai vs préd")
-    #plt.xlabel("Jour (chronologique)")
-    #plt.ylabel("Spread")
-    #plt.legend()
-    #plt.tight_layout()
-    #plt.show()
-
-    #  Plot 2 : scatter
+    #  Plot 1 : scatter
     plt.figure(figsize=(6, 6))
     plt.scatter(y_true, y_pred, alpha=0.6)
     lo, hi = min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())
@@ -79,7 +73,7 @@ def evaluate_and_plot(model, X,y,scaler_y=None,title="Modèle",history=None,pape
     plt.tight_layout()
     plt.show()
 
-    # Plot 3 : historique des losses
+    # Plot 2 : historique des losses
     if history is not None and hasattr(history, "history"):
         hist = history.history
         if "loss" in hist:

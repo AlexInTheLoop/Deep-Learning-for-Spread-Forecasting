@@ -10,7 +10,6 @@ class LSTM(layers.Layer):
         self.return_sequences = return_sequences
         self.dropout = dropout
         self.layernorm = layers.LayerNormalization()
-        self.dropout_layer = layers.Dropout(dropout)
 
     def build(self, input_shape):
         input_dim = input_shape[-1]
@@ -57,15 +56,15 @@ class LSTM(layers.Layer):
             x_t = inputs[:, t, :]
             h_t, c_t = self.lstm_step(x_t, h_t, c_t)
             h_t = self.layernorm(h_t)
-            h_t = self.dropout_layer(h_t, training=training)
             outputs.append(h_t)
 
-        output_sequence = ops.stack(outputs, axis=1)
-
+            if self.return_sequences:
+                outputs.append(h_t)
+        
+        # Récupération de la séquence ou de l'output final
         if self.return_sequences:
-            return output_sequence
-        else:
-            return output_sequence[:, -1, :] 
+            return ops.stack(outputs, axis=1)
+        return h_t
 
 def create_lstm_model(input_shape, nb_assets, units=100, dropout=0.3):
     model = keras.Sequential([
@@ -107,7 +106,7 @@ class GRU(layers.Layer):
         h_t = (1 - z) * h_hat + z * h_prev
         return self.layernorm(h_t)
 
-    def call(self, inputs):
+    def call(self, inputs, training = False):
         time_steps = ops.shape(inputs)[1]
         batch_size = ops.shape(inputs)[0]
 

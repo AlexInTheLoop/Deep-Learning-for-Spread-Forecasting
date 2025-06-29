@@ -5,54 +5,6 @@ import requests
 from parametric_estimators.hurst_estimator import estimateur_Hurst
 
 
-def get_basic_features(symbol, date, group):
-    try:
-        close = group["close"].to_numpy()
-        open = group["open"].iloc[0]
-        close_last = group["close"].iloc[-1]
-        high = group["high"].max()
-        low = group["low"].min()
-        volume_total = group["volume"].sum()
-        log_ret = np.log(close[1:] / close[:-1])
-        volatility = np.std(log_ret)
-        max_dd = np.min(close / np.maximum.accumulate(close) - 1)
-        vol_opening = group.iloc[:30]["volume"].sum()
-        vol_closing = group.iloc[-30:]["volume"].sum()
-        x = np.arange(len(close))
-        slope = np.polyfit(x, close, 1)[0]
-        above_open = np.mean(close > open)
-        below_open = np.mean(close < open)
-    except Exception as e:
-        print(f"Erreur traitement {date} : {e}")
-    
-    tick_size = np.nan
-    try:
-        exchange_info = requests.get(
-            f"https://fapi.binance.com/fapi/v1/exchangeInfo?symbol={symbol}"
-        ).json()
-        for f in exchange_info["symbols"][0]["filters"]:
-            if f["filterType"] == "PRICE_FILTER":
-                tick_size = float(f["tickSize"])
-                break
-    except Exception as e:
-        print(f"Erreur récupération tick_size : {e}")
-    
-    row = {
-            "day": date.day,
-            "daily_return": np.log(close_last / open),
-            "daily_range": (high - low) / close_last,
-            "volatility": volatility,
-            "max_drawdown": max_dd,
-            "volume_total": volume_total,
-            "volume_opening": vol_opening,
-            "volume_closing": vol_closing,
-            "trend_slope": slope,
-            "pct_time_above_open": above_open,
-            "pct_time_below_open": below_open,
-            "tick_size": tick_size
-        }
-    return row
-
 def get_serial_dependancy_features_v2(df_features: pd.DataFrame)->pd.DataFrame:
     """
     Méthode permettant de calculer et d'ajouter des features de dépendance sérielle pour enrichir l'estimation des modèles
@@ -189,16 +141,3 @@ def get_serial_dependency_features(date, group, features):
         print(f"Erreur calcul features séries temporelles pour {date}: {e}")
     
     return features
-
-def normalize(feature: pd.Series) -> pd.Series:
-    """
-    Méthode  utilitaires pour normaliser une série
-    """
-
-    # Calcul des moments
-    mean_feature = np.mean(feature)
-    std_feature = np.std(feature)
-
-    # Calcul de la série normalisée et récupération
-    normalized_features: pd.Series = (feature - mean_feature)/std_feature
-    return normalized_features

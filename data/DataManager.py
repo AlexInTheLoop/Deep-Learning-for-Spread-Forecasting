@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.daily_features_builders import (get_serial_dependancy_features_v2,normalize)
+from utils.daily_features_builders import get_serial_dependancy_features_v2
 from utils.res_comp import get_parametric_estimators_series
 
 RAW_DATA_DIR = "raw data"
@@ -37,7 +37,7 @@ class DataManager:
         self.nb_assets:int = len(self.symbols)
         self.light = light
 
-        # Récupération des différents paths vers les répertoires où seront stockées les features, les labels, ...
+        # Récupération des paths vers les répertoires où seront stockées les features, les labels, ...
         self.module_dir = os.path.dirname(os.path.abspath(__file__))
         self.raw_data_dir = os.path.join(self.module_dir, RAW_DATA_DIR)
         self.labels_data_dir = os.path.join(self.module_dir, LABELS_DATA_DIR)
@@ -54,7 +54,8 @@ class DataManager:
 
     def download_and_prepare_data(self):
         """
-        Méthode central de télécharger les barres d'une minute et les données de carnet d'ordres
+        Méthode centrale permettant de télécharger les barres d'une minute / données de carnet d'ordre
+        pour la construction des features et des labels
         """
 
         # Boucle par actif
@@ -72,7 +73,7 @@ class DataManager:
                 kline_filename = f"{symbol}-{self.freq}-{year_str}-{month_str}"
                 kline_parquet_path = os.path.join(self.raw_data_dir, f"{kline_filename}.parquet")
 
-                # Si les données n'ont pas déjà été importées, on les importe
+                # Si les données ont déjà été importées, on passe
                 if not os.path.exists(kline_parquet_path):
                     kline_zip_url = f"{self.kline_base_url}/{symbol}/{self.freq}/{kline_filename}.zip"
                     kline_zip_path = os.path.join(self.raw_data_dir, f"{kline_filename}.zip")
@@ -115,7 +116,7 @@ class DataManager:
                 csv_path = os.path.join(self.raw_data_dir, bookticker_csv_filename)
                 bookticker_parquet_path = os.path.join(self.raw_data_dir, f"{bookticker_filename}.parquet")
 
-                # Si les données n'ont pas déjà été importées, elles sont importées à nouveau
+                # Si les données ont déjà été importées, on passe
                 if not os.path.exists(bookticker_parquet_path) and not os.path.exists(label_path):
                     print(f"Téléchargement BookTicker : {bookticker_zip_url}")
                     response = requests.get(bookticker_zip_url, stream=True)
@@ -161,7 +162,13 @@ class DataManager:
 
     def load_features(self, serial_dependency:bool = False, clean_features: bool = False, use_tick_size: bool = False):
         """
-        Méthode permettant de sauvegarder les features intra-day utilisées pour estimer les modèles.
+        Méthode permettant de sauvegarder en parquet les features intra-day utilisées pour estimer les modèles.
+        Arguments :
+        - serial_dependancy: bool pour déterminer s'il faut construire des indicateurs de dépendance sérielle
+        - clean_features: bool pour déterminer s'il faut supprimer tous les fichiers de features créés précédemment (utile pour modifier les features)
+        - use_tick_size: bool pour déterminer s'il faut utiliser le ticksize parmi les features du modèle
+
+        Cette méthode permet de sauvegarder, en parquet, toutes les features pour chaque couple mois / actif
         """
 
         processed_paths = []
@@ -203,7 +210,7 @@ class DataManager:
                     tick_size: float = self._load_ticksize(symbol)
                     df_out["ticksize"] = tick_size
 
-                # Si on travaille sur un mois à moins de 30 jours, on passe (uniformisation des données) ==> à revoir ; cas à +30 jours gérés dans la méthode
+                # Si on travaille sur un mois à moins de 30 jours, on passe (uniformisation des données) 
                 if df_out.shape[0] < nb_sequences:
                     continue
 
@@ -211,7 +218,7 @@ class DataManager:
                 if df_out.shape[0] > nb_sequences:
                     df_out = df_out.iloc[0:nb_sequences, :]
 
-                # Sauvegarde
+                # Sauvegarde en parquet
                 df_out.to_parquet(processed_path, index=False)
                 processed_paths.append(processed_path)
                 print(f"Features générées pour l'actif {symbol} et la date {year}-{month_str}")
@@ -223,8 +230,10 @@ class DataManager:
         run précédents
         """
         print(f"Suppression des fichiers de {elem_model} créés précédemment")
+        # Récupération de tous les fichiers de label sous forme de liste
         if elem_model == LABELS_LABEL:
             filelist: list = [f for f in os.listdir(self.labels_data_dir)]
+        # Récupération de tous les fichiers de features sous forme de liste
         elif elem_model == FEATURES_LABEL:
             filelist: list = [f for f in os.listdir(self.minute_features_data_dir)]
         else:
@@ -237,14 +246,15 @@ class DataManager:
                 file_path = os.path.join(self.labels_data_dir, f)
             else:
                 file_path = os.path.join(self.minute_features_data_dir, f)
+            # Suppression
             os.remove(file_path)
-        print("Suppression des fichiers de features terminée")
+        print(f"Suppression des fichiers de {elem_model} terminée")
 
     @staticmethod
     def _load_ticksize(symbol: str)->float:
         """
         Méthode permettant de télécharger le ticksize associé au ticker
-        pour tester son pouvoir prédictif dans le modèle de Deep Learning
+        pour tester son pouvoir prédictif dans les modèle de Deep Learning
         """
 
         # Création du ticksize (nan par défaut)
@@ -265,20 +275,19 @@ class DataManager:
         return tick_size
 
     @staticmethod
-    def build_features(klines_path, use_serial_dependency: bool = False):
+    def build_features(klines_path, use_serial_dependency: bool = False)->pd.DataFrame:
         """
         Méthode permettant de construire les features intraday
 
-        Les features intraday utilisées sont :
-        - OHCL + Vol
+        Les features intraday utilisées dans le modèle sont :
+        - OHCL + Volume
         - Les rendements entre deux minutes
         - Le spread H-L au cours d'une minute
-        - L'évolution du spread H-L
+        - L'évolution du spread H-L sur 2 minutes
         - La volatilité des rendements
         - L'évolution du volume
         - Le volume moyen sur une fenêtre passée
-        - Le jour de la semaine
-        - Le numéro de l'actif (= pseudo encodage ==> à voir)
+        - La date de l'étude (heure, jour, mois, année)
         """
 
         # Ouverture du fichier
@@ -322,7 +331,6 @@ class DataManager:
             # Récupération du dataframe avec dépendance sérielle
             df_features = get_serial_dependancy_features_v2(df_features)
 
-
         # Suppression de la colonne de dates
         df_features.drop("datetime", axis=1, inplace=True)
         df_features.drop("date", axis=1, inplace=True)
@@ -333,6 +341,11 @@ class DataManager:
     def build_labels(self, clean_labels: bool = False)->list:
         """
         Méthode permettant de calculer les spreads journaliers
+        arguments:
+        -   clean_labels: booléen pour déterminer s'il faut supprimer les fichiers de label précédemment créés ou non
+
+        return:
+        - list contenant le path de tous les fichiers de label
         """
         os.makedirs(self.labels_data_dir, exist_ok=True)
 
@@ -397,16 +410,13 @@ class DataManager:
                 # Récupération du jour
                 df["day"] = df["datetime"].dt.day
 
-                # Calcul des séries bid / ask normalisée
-                df["normalized_ask"] = normalize(df["best_ask_price"])
-                df["normalized_bid"] = normalize(df["best_bid_price"])
+                # Calcul du prix mid
+                df["mid_price"] = (df["best_ask_price"] + df["best_bid_price"])/2
 
-                # Calcul du spread entre les séries de bid / ask normalisées en valeur absolue (pour garantir que le spread soit positif)
-                df["spread"] = np.abs(df["normalized_ask"] - df["normalized_bid"])
-                #df["spread"] = df["best_ask_price"] - df["best_bid_price"]
-                #df["spread"] = normalize(df["spread"])
+                # Calcul du spread en % du prix (pour tenir compte de l'hétérogénéité des données crypto)
+                df["spread"] = (df["best_ask_price"] - df["best_bid_price"]) / df["mid_price"]
 
-                # Regroupement par jour ==> pas sur pour la normalisation, peut être nul
+                # Regroupement par jour
                 df_daily = df.groupby("day")["spread"].mean().reset_index()
                 df_daily.columns = ["day", "spread_real"]
 
@@ -422,13 +432,9 @@ class DataManager:
                 df_daily.to_parquet(label_path, index=False)
                 print(f"Labels générés : {label_path}")
                 label_paths.append(label_path)
-
-                # Suppression du fichier contenant les booktickers pour alléger la mémoire
-                # os.remove(parquet_path)
-                # print(f"Le fichier {parquet_path} a été supprimé avec succès")
         return label_paths
 
-    def build_training_data(self, symbols=None, do_aggregate: bool = False):
+    def build_training_data(self, symbols=None):
         """
         Méthode permettant de construire les dataframes d'entrainement
 
@@ -471,16 +477,10 @@ class DataManager:
                 df_feat = pd.read_parquet(feature_path)
                 df_label = pd.read_parquet(label_path)
 
-                # Agrégation de la séquence (cas du MLP, ...) ==> à ajouter ici
-                # df_feat = ...
-
                 # Fusion des dataframes et récupération des features / spread
                 df_merged = pd.merge(df_feat, df_label, on="day", how="inner")
                 X = df_merged.loc[:, df_merged.columns != "spread_real"]
                 y = df_merged["spread_real"]
-
-                # Spread du jour = moyenne du spread intra-journalier
-                # y = df_merged.groupby("day")["spread_real"].mean()
 
                 meta_all.append(pd.DataFrame({
                     "symbol": [symbol] * len(df_merged),
@@ -500,6 +500,7 @@ class DataManager:
         y_final = pd.concat(y_all, ignore_index=True).to_numpy(dtype=np.float32)
         self.meta = pd.concat(meta_all, ignore_index=True)
 
+        # Retraitement éventuel des valeurs manquantes
         max_float32 = np.finfo(np.float32).max
         min_float32 = np.finfo(np.float32).min
         X_final = np.nan_to_num(X_final, nan=0.0, posinf=max_float32, neginf=min_float32)
@@ -513,13 +514,17 @@ class DataManager:
         print(f"Données prêtes : X.shape = {X_final.shape}, y.shape = {y_final.shape}")
         return X_final, y_final
 
-    def build_train_val_dataset(self, val_size = 0.2, is_test: bool = False, do_aggregate: bool = False):
+    def build_train_val_dataset(self, val_size = 0.2, is_test: bool = False):
         """
-        Méthode permettant de construire les dataframe d'input / output requis pour les modèles
+        Méthode permettant de construire les dataframe de train / validation requis pour l'estimation des modèles
+
+        Arguments:
+        - val_size: split train/val
+        - is_test: booléen pour indiquer s'il faut effectuer un split ou non
         """
 
         # Récupération des arrays avec les features/label pour tous les actifs date par date
-        X, y = self.build_training_data(do_aggregate = do_aggregate)
+        X, y = self.build_training_data()
 
         # Récupération du nombre d'actifs du datamanager et de la longueur d'une séquence
         nb_assets: int = len(self.symbols)
@@ -546,14 +551,89 @@ class DataManager:
             X_train, y_train, X_val, y_val = self._time_series_split_minute(X, y, val_size)
         return X_train, X_val, y_train, y_val
 
+    def compute_spread_pred(self, y_pred, scaler_y = None):
+        """
+        Méthode permettant de convertir la sortie du modèle de Deep Learning
+        en spread pour comparer avec les estimateurs de Garcin.
+        """
+        os.makedirs(self.labels_data_dir, exist_ok=True)
+
+        # Liste pour stocker les prix mid pour tous les actif
+        mid_price_list: list = []
+
+        # Double boucle actif / date
+        for symbol in self.symbols:
+            for (year, month) in self.dates:
+                month_str = f"{month:02d}"
+                year_str = str(year)
+                base_name = f"{symbol}-bookTicker-{year_str}-{month_str}"
+                parquet_path = os.path.join(self.raw_data_dir, f"{base_name}.parquet")
+
+                # Chargement des booktickers
+                df = pd.read_parquet(parquet_path)
+                if self.light:
+                    df.columns = [
+                        "best_bid_price",
+                        "best_ask_price",
+                        "transaction_time",
+                    ]
+                else:
+                    df.columns = [
+                        "update_id",
+                        "best_bid_price",
+                        "best_bid_qty",
+                        "best_ask_price",
+                        "best_ask_qty",
+                        "transaction_time",
+                        "event_time"
+                    ]
+
+                # si transaction_time n'est pas au format date, conversion
+                if not np.issubdtype(df["transaction_time"].dtype, np.datetime64):
+                    try:
+                        df["datetime"] = pd.to_datetime(df["transaction_time"].astype(np.int64), unit="ms")
+                    except Exception as e:
+                        print("Erreur conversion datetime:", e)
+                        return []
+                else:
+                    df["datetime"] = df["transaction_time"]
+
+                # Récupération du jour
+                df["day"] = df["datetime"].dt.day
+
+                # Calcul de l'écart-moyen
+                df["mid_price"] = (df["best_ask_price"] + df["best_bid_price"]) / 2
+
+                # Regroupement par jour
+                df_daily = df.groupby("day")["mid_price"].mean().reset_index()
+                df_daily.columns = ["day", "mid_price"]
+
+                mid_price_list.append(df_daily["mid_price"].values)
+
+
+        # Rescale du spread en % du prix prédit par le modèle
+        if scaler_y is not None:
+            y_pred = scaler_y.inverse_transform(y_pred).ravel()
+
+        # Calcul du spread / jour
+        mid_price = np.concat(mid_price_list).astype(dtype = np.float32)
+        
+        # Ajustement des éléments à utiliser les les prévisions (60 éléments dans tous les cas, sauf le TKAN où la taille de la fenêtre considérée dans le projet est de 5)
+        print(len(mid_price))
+        print(len(y_pred))
+        if len(y_pred) == 60:
+            spread_pred = y_pred * mid_price
+        elif len(y_pred) == 55 and len(mid_price) == 60:
+            spread_pred = y_pred * mid_price[5:]
+        else:
+            raise ValueError(f"Taille inattendue : y_pred={len(y_pred)}, mid_price={len(mid_price)}")
+        return spread_pred    
+
     def time_series_features(self, X, y, daily = True, test_size=0.2, val_size=0.2):
         """
         Trie les données dans l'ordre [day, symbol] et applique un split temporel train / val / test.
         """
-        if not daily:
-            return self._time_series_split_minute(X, y, test_size, val_size)
-        else:
-            return self._time_series_split_daily(X, y, test_size, val_size)
+        return self._time_series_split_minute(X, y, test_size, val_size)
 
     @staticmethod
     def reduce_labels(y_part, n_min: int):
@@ -561,13 +641,16 @@ class DataManager:
         fonction  permettant de passer des spread intraday au spread journalier moyen
         """
 
-
         spread_per_day = y_part.reshape(int(np.ceil(y_part.shape[0] / n_min)), n_min, 1)
         avg_daily_spread = np.mean(spread_per_day, axis=1)
 
         return avg_daily_spread
 
     def _time_series_split_minute(self, X, y, val_size):
+        """
+        Méthode permettant de réaliser un split pour les données intraday selon 
+        les actifs et les périodes
+        """
         df_meta = self.meta.copy()
         df_meta["row_idx"] = np.arange(len(df_meta))
 
@@ -626,98 +709,48 @@ class DataManager:
 
         return X_train, y_train, X_val, y_val
 
-    def _time_series_split_daily(self, X, y, val_size):
-        df_meta = self.meta.copy()
-        df_meta["row_idx"] = np.arange(len(df_meta))
-        df_meta_sorted = df_meta.sort_values(by=["day", "symbol"]).reset_index(drop=True)
-
-        sorted_indices = df_meta_sorted["row_idx"].values
-        X_sorted = X[sorted_indices]
-        y_sorted = y[sorted_indices]
-        days_sorted = df_meta_sorted["day"].values
-
-        unique_days = np.unique(days_sorted)
-
-        # Découpage du dataframe
-        n_days = len(unique_days)
-        n_val = int(np.ceil(val_size * n_days)) if val_size < 1 else int(val_size)
-        n_train = n_days - n_val
-
-        train_days = unique_days[:n_train]
-        val_days = unique_days[n_train:n_train + n_val]
-
-        def get_mask(days_subset):
-            return np.isin(days_sorted, days_subset)
-
-        mask_train = get_mask(train_days)
-        mask_val = get_mask(val_days)
-
-        X_train = X_sorted[mask_train]
-        X_val = X_sorted[mask_val]
-
-        y_train = y_sorted[mask_train]
-        y_val = y_sorted[mask_val]
-
-        print(f"Split : train={len(X_train)}, val={len(X_val)}")
-        print(f"Labels : y_train={len(y_train)}, y_val={len(y_val)}")
-        return X_train, y_train, X_val, y_val
-
     @staticmethod
-    def make_batches(X_rnn, y_rnn, batch_size=32, shuffle=True):
-        dataset = tf.data.Dataset.from_tensor_slices((X_rnn, y_rnn))
-        if shuffle:
-            dataset = dataset.shuffle(buffer_size=len(X_rnn))
-        dataset = dataset.batch(batch_size)
-        return dataset
-    
-    @staticmethod
-    def format_data(X,y,model_type,daily=True,nb_assets=None,minutes_per_day=1440,window=None):
+    def format_data(X,y,model_type,nb_assets=None,minutes_per_day=1440,window=None):
    
-    
         if nb_assets is None:
             raise ValueError("nb_assets doit être spécifié")
-
+        
         model_type = model_type.lower()
         N, d = X.shape
 
-        if daily:
-            nb_days = N
-            if y.shape[0] != nb_days:
-                raise ValueError(f"[daily=True] y.shape[0] doit être égal à X.shape[0] (= {nb_days})")
-            y_out = y
-            rows_per_day = 1
+        # Récupération du nombre de données par jour (pour les tests)
+        rows_per_day = nb_assets * minutes_per_day
+        if N % rows_per_day != 0:
+            raise ValueError(f"[daily=False] X.shape[0]={N} n'est pas divisible par nb_assets*minutes_per_day={rows_per_day}")
+        nb_days = N // rows_per_day
 
-        else:
-            rows_per_day = nb_assets * minutes_per_day
-            if N % rows_per_day != 0:
-                raise ValueError(f"[daily=False] X.shape[0]={N} n'est pas divisible par nb_assets*minutes_per_day={rows_per_day}")
-            nb_days = N // rows_per_day
+        if y.shape[0] != nb_days * nb_assets:
+            raise ValueError(f"[daily=False] y.shape[0]={y.shape[0]} attendu = nb_days*nb_assets = {nb_days}*{nb_assets}")
+        y_out = y.reshape(nb_days * nb_assets, 1)
 
-            if y.shape[0] != nb_days * nb_assets:
-                raise ValueError(f"[daily=False] y.shape[0]={y.shape[0]} attendu = nb_days*nb_assets = {nb_days}*{nb_assets}")
-            y_out = y.reshape(nb_days, nb_assets)
-
+        # Pour un MLP, input = applatissement de la séquence journalière
         if model_type == "mlp":
-            X_out = X.reshape(nb_days, rows_per_day * d)
+            X_out = X.reshape(nb_days * nb_assets, minutes_per_day * d)
 
+        # Pour les autres modèles : (nb_jours * nb_actifs, 1440, nb_features)
         elif model_type == "cnn":
-            X_out = X.reshape(nb_days, rows_per_day, d)
+            X_out = X.reshape(nb_days * nb_assets, minutes_per_day, d)
 
         elif model_type == "rnn":
-            X_out = X.reshape(nb_days, rows_per_day, d)
+            X_out = X.reshape(nb_days * nb_assets, minutes_per_day, d)
 
         elif model_type == "seq":
             if window is None:
                 raise ValueError("window doit être spécifié pour model_type='seq'")
 
-            X_r = X.reshape(nb_days, rows_per_day, d)
+            X_r = X.reshape(nb_days * nb_assets, minutes_per_day, d)
 
             if nb_days <= window:
                 return np.empty((0, window, rows_per_day * d), dtype=np.float32), np.empty((0, nb_assets), dtype=np.float32)
 
             X_out = np.array([
                 X_r[t:t + window].reshape(window, -1)
-                for t in range(nb_days - window)
+                for t in range(nb_days * nb_assets - window)
             ], dtype=np.float32)
 
             y_out = y_out[window:] 

@@ -181,9 +181,9 @@ class KANFeedForward(layers.Layer):
         self.units        = units
         self.num_branches = num_branches
 
-        self.linear1 = layers.Dense(num_branches, use_bias=True)# projection
-        self.poly    = PolyActivation(num_branches)# activation polynomiale
-        self.linear2 = layers.Dense(units, use_bias=True)# retour à la dimension d'origine
+        self.linear1 = layers.Dense(num_branches, use_bias=True) # projection
+        self.poly    = PolyActivation(num_branches) # activation polynomiale
+        self.linear2 = layers.Dense(units, use_bias=True) # retour à la dimension d'origine
 
     def call(self, x):
         h = self.linear1(x)

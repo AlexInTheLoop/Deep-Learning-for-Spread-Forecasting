@@ -7,7 +7,7 @@ from utils.metrics import compute_estimators_metrics
 class PaperEstimatorsRunner:
     """ Classe pour charger les estimateurs du papier et évaluer les performances sur les données de Binance."""
 
-    def _init_(self, symbols,periods,*,use_opposed=False,light_download=True,auto_labels=True):
+    def __init__(self, symbols,periods,*,use_opposed=False,light_download=True,auto_labels=True):
              
         self.symbols = [s.upper() for s in symbols]
         self.periods = periods

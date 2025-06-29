@@ -1,7 +1,9 @@
 import os
 #os.environ["KERAS_BACKEND"] = "jax"
-from keras import ops, layers, Sequential, Input, Model
+from keras import ops, layers, Input, models, optimizers, Model,initializers
 import keras
+import keras.backend as K
+
 
 class LSTM(layers.Layer):
     def __init__(self, units, return_sequences=False, dropout=0.3, **kwargs):
@@ -66,15 +68,6 @@ class LSTM(layers.Layer):
             return ops.stack(outputs, axis=1)
         return h_t
 
-def create_lstm_model(input_shape, nb_assets, units=100, dropout=0.3):
-    model = keras.Sequential([
-        layers.Input(shape=input_shape), 
-        LSTM(units=units, return_sequences=False, dropout=dropout),
-        layers.Dense(nb_assets,activation='softplus')               
-    ])
-    model.compile(optimizer="adam", loss='mse', metrics=["mae"])
-    return model
-
 class GRU(layers.Layer):
     def __init__(self, units, return_sequences=False, dropout=0.3, **kwargs):
         super().__init__(**kwargs)
@@ -123,41 +116,77 @@ class GRU(layers.Layer):
             return outputs[:, -1, :]
         return outputs
 
+class PolyActivation(layers.Layer):
+    """Activation polynomiale (ordre 2)"""
+    def __init__(self, units, **kwargs):
+        super().__init__(**kwargs)
+        # trois coefficients par unité
+        self.a0 = self.add_weight( shape=(units,),initializer='zeros',name='a0')
+        self.a1 = self.add_weight(shape=(units,),initializer='ones',name='a1')
+        self.a2 = self.add_weight(shape=(units,),initializer=initializers.RandomNormal(0., 0.1),name='a2') 
+        
+    def call(self, x):
+        return self.a0 + self.a1 * x + self.a2 * (x * x)
+
+class KANFeedForward(layers.Layer):
+    """Sous-couche KAN : Dense puis PolyActivation puis Dense"""
+    def __init__(self, units, num_branches=32, **kwargs):
+        super().__init__(**kwargs)
+        self.units        = units
+        self.num_branches = num_branches
+
+        self.linear1 = layers.Dense(num_branches, use_bias=True)# projection
+        self.poly    = PolyActivation(num_branches)# activation polynomiale
+        self.linear2 = layers.Dense(units, use_bias=True)# retour à la dimension d'origine
+
+    def call(self, x):
+        h = self.linear1(x)
+        h = self.poly(h)
+        return self.linear2(h)
+
 class TKAN(layers.Layer):
-    def __init__(self, units, num_heads=4, dropout=0.1, return_sequences=True, **kwargs):
+    """TrueTKAN : MultiHeadAttention + KANFeedForward + résidus + LayerNorm"""
+    def __init__(self,units,num_heads: int = 4,dropout: float = 0.1,return_sequences: bool = True,num_branches: int = 32,**kwargs):
+                         
         super().__init__(**kwargs)
         self.units = units
         self.num_heads = num_heads
+        self.dropout = dropout
         self.return_sequences = return_sequences
-        self.dropout_rate = dropout
+        # projection linéaire 
+        self.input_proj  = layers.Dense(units) 
+       
+        self.attn = layers.MultiHeadAttention(num_heads=num_heads,key_dim=units) #attention multi-têtes
+        self.kan_ffn       = KANFeedForward(units, num_branches)# sous-couche KAN-feed-forward
+        self.dropout_layer = layers.Dropout(dropout)# dropout sur la sortie du feed-forward
 
-        self.input_projection = layers.Dense(units)
-        self.attn = layers.MultiHeadAttention(num_heads=num_heads, key_dim=units)
-        self.ffn = Sequential([
-            layers.Dense(units * 2, activation='relu'),
-            layers.Dropout(dropout),
-            layers.Dense(units)
-        ])
-        self.layernorm1 = layers.LayerNormalization()
-        self.layernorm2 = layers.LayerNormalization()
+        # deux normalisations pour les connexions résiduelles
+        self.layernorm1    = layers.LayerNormalization()
+        self.layernorm2    = layers.LayerNormalization()
 
-    def call(self, inputs):
-        projected_inputs = self.input_projection(inputs)
+    def call(self, inputs, training=None, **kwargs):
+        
+        z = self.input_proj(inputs)  # projection initiale              
+        a = self.attn(z, z, training=training) # multi-head self-attention    
+        r1 = self.layernorm1(z + a) # premier résidu + normalisation
 
-        attn_output = self.attn(projected_inputs, projected_inputs)
-        out1 = self.layernorm1(projected_inputs + attn_output)
+        f  = self.kan_ffn(r1)# KAN feed-forward 
+        f  = self.dropout_layer(f, training=training) #dropout
+        
+        r2 = self.layernorm2(r1 + f) # second résidu et normalisation
 
-        ffn_output = self.ffn(out1)
-        out2 = self.layernorm2(out1 + ffn_output)
+        if self.return_sequences:
+            return r2                             
+        return r2[:, -1, :]   
 
-        if not self.return_sequences:
-            return out2[:, -1, :]
-
-        return out2 
-
-
-
-from keras import layers, models, optimizers
+def create_lstm_model(input_shape, nb_assets, units=100, dropout=0.3):
+    model = keras.Sequential([
+        layers.Input(shape=input_shape), 
+        LSTM(units=units, return_sequences=False, dropout=dropout),
+        layers.Dense(nb_assets,activation='softplus')               
+    ])
+    model.compile(optimizer="adam", loss='mse', metrics=["mae"])
+    return model
 
 def create_native_lstm_model(
     input_shape,
@@ -187,7 +216,6 @@ def create_native_lstm_model(
     model.compile(optimizer=opt, loss="mse", metrics=["mae"])
     return model
 
-
 def create_rnn_model(
     input_shape,
     nb_assets,
@@ -208,7 +236,6 @@ def create_rnn_model(
             padding="same",
             activation=conv_activation
         )(x)
-
     x = rnn_layer(x)
     outputs = layers.Dense(1, activation="softplus")(x)
 

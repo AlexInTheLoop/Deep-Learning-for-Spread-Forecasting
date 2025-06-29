@@ -7,20 +7,16 @@ from utils.metrics import compute_estimators_metrics
 
 
 class PaperEstimatorsRunner:
+    """ Classe pour charger les estimateurs du papier et évaluer les performances sur les données de Binance."""
 
-    def __init__(self, symbols,periods,*,mode="pair",use_opposed=False,light_download=True,auto_labels=True):
+    def __init__(self, symbols,periods,*,use_opposed=False,light_download=True,auto_labels=True):
              
         self.symbols = [s.upper() for s in symbols]
         self.periods = periods
-        self.mode    = mode.lower()
-        assert self.mode in {"cross", "pair"}
-
-        if self.mode == "cross":
-            self.tasks = [(sym, y, m) for sym in self.symbols for (y, m) in self.periods]                            
-        else:                                 
-            if len(self.symbols) != len(self.periods):
-                raise ValueError("mode='pair' → len(symbols) doit == len(periods)")
-            self.tasks = [(s, y, m) for (s, (y, m)) in zip(self.symbols,self.periods)]
+                    
+        if len(self.symbols) != len(self.periods):
+            raise ValueError("len(symbols) doit == len(periods)")
+        self.tasks = [(s, y, m) for (s, (y, m)) in zip(self.symbols,self.periods)]
                                                             
         self._dms = {}
         for sym, y, m in self.tasks:
@@ -42,7 +38,9 @@ class PaperEstimatorsRunner:
 
 
     def _load_klines_one_month(self, dm, year, month, symbol):
-        """Estimateurs papier"""
+        """Charge les données de kline pour un symbole et une période donnés."""
+
+
         fname = f"{symbol}-1m-{year}-{month:02d}.parquet"
         path  = os.path.join(dm.raw_data_dir, fname)
         df = pd.read_parquet(path,
@@ -56,10 +54,12 @@ class PaperEstimatorsRunner:
         if self._df_est is not None and not force:
             return self._df_est    
 
+        # Si les labels sont activés, on charge les labels
         frames = []
         for (y, m), dm in self._dms.items():
             dm.download_and_prepare_data()        
 
+            # Charge les données de kline pour chaque symbole et période
             for sym in self.symbols:
                 df = self._load_klines_one_month(dm, y, m, sym)
                 for d, grp in df.groupby("day", sort=True):

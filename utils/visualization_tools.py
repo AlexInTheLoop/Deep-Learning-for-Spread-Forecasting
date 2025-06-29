@@ -1,6 +1,6 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -35,7 +35,6 @@ def plot_model_metrics(df):
     title = "Comparaison des performances des méthodes de prédiction du spread moyen journalier"
     fig.update_layout(height=800, width=1000, title_text=title)
     return fig
-
 
 def evaluate_and_plot(model, X,y,manager:DataManager, 
                       scaler_y=None,title="Modèle",history=None,paper_metrics=None,paper_daily=None,y_true_daily=None,show_metrics=True):                  

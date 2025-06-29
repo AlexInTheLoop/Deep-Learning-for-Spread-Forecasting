@@ -4,13 +4,9 @@ import numpy as np
 import requests
 import zipfile
 import tensorflow as tf
-from numpy.random import normal
-from sklearn.model_selection import train_test_split
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.daily_features_builders import get_serial_dependancy_features_v2
-from utils.res_comp import get_parametric_estimators_series
 
 RAW_DATA_DIR = "raw data"
 LABELS_DATA_DIR = "labels data"
@@ -42,11 +38,9 @@ class DataManager:
         self.raw_data_dir = os.path.join(self.module_dir, RAW_DATA_DIR)
         self.labels_data_dir = os.path.join(self.module_dir, LABELS_DATA_DIR)
         self.minute_features_data_dir = os.path.join(self.module_dir, MINUTE_FEATURES_DATA_DIR)
-        self.parametric_estimators_dir = os.path.join(self.module_dir, PARAMETRIC_ESTIMATORS_DIR)
         os.makedirs(self.raw_data_dir, exist_ok=True)
         os.makedirs(self.labels_data_dir, exist_ok=True)
         os.makedirs(self.minute_features_data_dir, exist_ok=True)
-        os.makedirs(self.parametric_estimators_dir, exist_ok=True)
 
         # Récupération des url pour télécharger les barres d'une minute et les carnets d'ordres
         self.kline_base_url = "https://data.binance.vision/data/futures/um/monthly/klines"
@@ -274,10 +268,9 @@ class DataManager:
         # Récupération du ticksize
         return tick_size
 
-    @staticmethod
-    def build_features(klines_path, use_serial_dependency: bool = False)->pd.DataFrame:
+    def build_features(self, klines_path, use_serial_dependency: bool = False)->pd.DataFrame:
         """
-        Méthode permettant de construire les features intraday
+        Méthode permettant de construire les features intraday utilisées pour l'estimation des modèles
 
         Les features intraday utilisées dans le modèle sont :
         - OHCL + Volume
@@ -329,7 +322,7 @@ class DataManager:
         if use_serial_dependency:
 
             # Récupération du dataframe avec dépendance sérielle
-            df_features = get_serial_dependancy_features_v2(df_features)
+            df_features = self.get_serial_dependancy_features(df_features)
 
         # Suppression de la colonne de dates
         df_features.drop("datetime", axis=1, inplace=True)
@@ -660,7 +653,6 @@ class DataManager:
         X_sorted = X[sorted_indices]
         y_sorted = y[sorted_indices]
         days_sorted = df_meta_sorted["day"].values
-        symbols_sorted = df_meta_sorted["symbol"].values
 
         # Nombre de minutes par jour
         n_min: int = 1440
@@ -684,6 +676,7 @@ class DataManager:
         n_val = int(np.ceil(val_size * n_periods))
         n_train = n_periods - n_val
 
+        # Fonction pour récupérer les indices des données à utiliser dans le train / val
         def get_day_indices(start_day_idx, n_days_split):
             day_indices = []
             for i in range(start_day_idx, start_day_idx + n_days_split):
@@ -701,6 +694,7 @@ class DataManager:
         y_train_full = y_sorted[idx_train]
         y_val_full = y_sorted[idx_val]
 
+        # Réduction des données sur le spread rapport à l'actif par jour
         y_train = self.reduce_labels(y_train_full, n_min=n_min)
         y_val = self.reduce_labels(y_val_full, n_min=n_min)
 
@@ -709,6 +703,51 @@ class DataManager:
 
         return X_train, y_train, X_val, y_val
 
+    @staticmethod
+    def get_serial_dependancy_features(df_features: pd.DataFrame)->pd.DataFrame:
+        """
+        Méthode permettant de calculer et d'ajouter des features de dépendance sérielle pour enrichir l'estimation des modèles
+        """
+
+        # Création d'un dataframe pour stocker les features de dépendance sérielle
+        df_serial_dependance: pd.DataFrame = pd.DataFrame()
+
+        # Récupération de la série des prix close et passage en log
+        close_arr = df_features["close"]
+        log_close = np.log(close_arr)
+
+        # Première feature : incrément du prix, en logarithme
+        delta1 = np.zeros_like(log_close)
+        delta1[1:] = log_close[1:] - log_close[:-1]
+        df_serial_dependance["delta1"] = delta1
+
+        # 2eme feature : convariance non laggées
+        cov1 = np.zeros_like(log_close)
+        cov1[2:] = (log_close[2:] - log_close[1:-1]) * (log_close[1:-1] - log_close[:-2])
+        df_serial_dependance["cov1"] = cov1
+
+        # 3eme feature : covariance avec un lag
+        cov2 = np.zeros_like(log_close)
+        if len(log_close) >= 5:
+            # On calcule pour i>=4
+            for i in range(4, len(log_close)):
+                cov2[i] = (log_close[i] - log_close[i-2]) * (log_close[i-2] - log_close[i-4])
+        df_serial_dependance["cov2"] = cov2
+
+        # 4eme feature : variance glissante sur 10 minutes des incréments delta1
+        var10 = np.zeros_like(delta1)
+        window = 10
+        for i in range(window, len(delta1)):
+            var10[i] = np.var(delta1[i-window:i])
+        mu_var10 = var10.mean()
+        sigma_var10 = var10.std() if var10.std() > 0 else 1.0
+        var10 = (var10 - mu_var10) / sigma_var10
+        df_serial_dependance["var10"] = var10
+
+        # Concaténation avec le dataframe de features pris en entrée
+        df_all_features: pd.DataFrame = pd.concat([df_features, df_serial_dependance], axis=1)
+        return df_all_features
+    
     @staticmethod
     def format_data(X,y,model_type,nb_assets=None,minutes_per_day=1440,window=None):
    
@@ -759,70 +798,3 @@ class DataManager:
             raise ValueError(f"Modèle inconnu : '{model_type}'")
 
         return X_out.astype(np.float32), y_out.astype(np.float32)
-
-    def compute_and_save_parametric_estimators(self,X,use_opposed=False,sort_mode="asset_first"):      
-            
-        if sort_mode not in {"asset_first", "day_first"}:
-            raise ValueError("sort_mode doit être 'asset_first' ou 'day_first'.")
-
-        crypto_names = sorted(self.symbols)
-        crypto_str = "-".join(crypto_names)
-        filename = f"param_est__{crypto_str}_{self.year:04d}_{self.month:02d}_" \
-                f"opposed={use_opposed}_{sort_mode}.parquet"
-        file_path = os.path.join(self.parametric_estimators_dir, filename)
-
-        if os.path.exists(file_path):
-            print(f"Fichier déjà existant, pas de recalcul : {file_path}")
-            return pd.read_parquet(file_path)
-
-        df = pd.DataFrame(X, columns=["day", "open", "high", "low", "close", "volume"])
-
-        meta_subset = self.generate_meta_from_X(X, sort_mode=sort_mode)
-        list_dfs = []
-
-        for asset in self.symbols:
-            print(f"Traitement de l'actif {asset}...")
-
-            asset_mask = meta_subset["symbol"] == asset
-            meta_asset = meta_subset[asset_mask]
-            df_asset = df.loc[asset_mask.values]
-
-            if df_asset.empty:
-                print(f"Aucun point trouvé pour {asset}, on passe.")
-                continue
-
-            df_result = get_parametric_estimators_series(df_asset.values, meta_asset, use_opposed)
-            list_dfs.append(df_result)
-
-        if not list_dfs:
-            raise ValueError("Aucune donnée valide trouvée dans X.")
-
-        df_concat = pd.concat(list_dfs, axis=0, ignore_index=True)
-        os.makedirs(self.parametric_estimators_dir, exist_ok=True)
-        df_concat.to_parquet(file_path, index=False)
-        print(f"Estimations sauvegardées dans : {file_path}")
-        return df_concat
-
-    def generate_meta_from_X(self, X, sort_mode="asset_first", minutes_per_day=1440):
-        nb_assets = len(self.symbols)
-        nb_rows = X.shape[0]
-        total_minutes_per_day = minutes_per_day * nb_assets
-
-        if nb_rows % total_minutes_per_day != 0:
-            raise ValueError("X ne couvre pas un nombre entier de jours pour tous les actifs.")
-
-        nb_days = nb_rows // total_minutes_per_day
-
-        meta = []
-        if sort_mode == "asset_first":
-            for symbol in self.symbols:
-                for day in range(nb_days):
-                    meta.extend([{"symbol": symbol, "day": day}] * minutes_per_day)
-        elif sort_mode == "day_first":
-            for day in range(nb_days):
-                for symbol in self.symbols:
-                    meta.extend([{"symbol": symbol, "day": day}] * minutes_per_day)
-        else:
-            raise ValueError("sort_mode doit être 'asset_first' ou 'day_first'.")
-
-        return pd.DataFrame(meta)

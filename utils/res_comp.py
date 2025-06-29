@@ -51,7 +51,7 @@ def get_parametric_estimators_series(X, meta, use_opposed):
 def compute_parametric_estimators(data, use_opposed=False):
     """
     Calcule les estimateurs paramètriques du spread pour une journée donnée
-    à partir des klines 1 minute d'une journée de trading.
+    à partir des klines 1 minute
     """
     estimators = np.zeros(9, dtype=float)
 

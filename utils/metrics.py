@@ -29,13 +29,13 @@ def compile_models_metrics(models, X_test, y_test, y_scaler=None):
     metrics = {}
     for i, (name, model) in enumerate(models.items()):
         metrics[name] = compute_model_metrics(model, X_test[i], y_test[i], y_scaler, name)
-    return pd.DataFrame(metrics, index=['R²', 'RMSE', 'MAE', 'Score']).T
+    return pd.DataFrame(metrics, index=['R²', 'RMSE', 'MAE']).T
 
 def compute_estimators_metrics(df_estimators, 
                                 y_true, 
                                 sort_mode = "asset_first"):
     """
-    Calcule les métriques R², RMSE, MAE et Score pour chaque estimateur de spread.
+    Calcule les métriques R², RMSE, MAE pour chaque estimateur de spread.
     """
     df = df_estimators.copy()
 

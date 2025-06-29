@@ -61,18 +61,8 @@ def evaluate_and_plot(model, X,y,manager:DataManager,
     if show_metrics:
         print(f"{title} – Test | RMSE={rmse:.4f}  MAE={mae:.4f}")
 
-    #  Plot 1 : scatter
-    plt.figure(figsize=(6, 6))
-    plt.scatter(y_true, y_pred, alpha=0.6)
-    lo, hi = min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())
-    plt.plot([lo, hi], [lo, hi], "k--")
-    plt.title(f"{title} – Dispersion")
-    plt.xlabel("Spread réel")
-    plt.ylabel("Spread prédit")
-    plt.tight_layout()
-    plt.show()
 
-    # Plot 2 : historique des losses
+    # Plot 1 : historique des losses
     if history is not None and hasattr(history, "history"):
         hist = history.history
         if "loss" in hist:

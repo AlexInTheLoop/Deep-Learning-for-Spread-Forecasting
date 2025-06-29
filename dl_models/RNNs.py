@@ -12,6 +12,7 @@ class LSTM(layers.Layer):
         self.return_sequences = return_sequences
         self.dropout = dropout
         self.layernorm = layers.LayerNormalization()
+        self.dropout_layer = layers.Dropout(self.dropout)
 
     def build(self, input_shape):
         input_dim = input_shape[-1]
@@ -58,6 +59,7 @@ class LSTM(layers.Layer):
             x_t = inputs[:, t, :]
             h_t, c_t = self.lstm_step(x_t, h_t, c_t)
             h_t = self.layernorm(h_t)
+            h_t = self.dropout_layer(h_t)
             outputs.append(h_t)
 
             if self.return_sequences:

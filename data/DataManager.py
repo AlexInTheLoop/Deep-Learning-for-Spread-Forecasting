@@ -609,7 +609,7 @@ class DataManager:
             y_pred = scaler_y.inverse_transform(y_pred).ravel()
 
         # Calcul du spread / jour
-        mid_price = np.concat(mid_price_list).astype(dtype = np.float32)
+        mid_price = np.concatenate(mid_price_list).astype(dtype = np.float32)
         
         # Ajustement des éléments à utiliser les les prévisions (60 éléments dans tous les cas, sauf le TKAN où la taille de la fenêtre considérée dans le projet est de 5)
         print(len(mid_price))

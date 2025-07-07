@@ -123,34 +123,6 @@ class GRU(layers.Layer):
             return outputs[:, -1, :]
         return outputs
 
-def create_native_lstm_model(
-    input_shape,
-    nb_assets   = 1,
-    units       = 100,
-    dropout     = 0.3,
-    lr          = 1e-3,
-    clipnorm    = 1.0
-):
-    """
-    LSTM Keras natif + tête Dense(1, softplus).
-    """
-    inputs = layers.Input(shape=input_shape)
-
-    x = layers.LSTM(
-        units,
-        dropout        = dropout,   # dropout sur les entrées
-        recurrent_dropout = 0.0,    # éventuellement 0.1
-        return_sequences = False
-    )(inputs)
-
-    outputs = layers.Dense(nb_assets, activation="softplus")(x)
-
-    model = models.Model(inputs, outputs)
-
-    opt = optimizers.Adam(learning_rate=lr, clipnorm=clipnorm)
-    model.compile(optimizer=opt, loss="mse", metrics=["mae"])
-    return model
-
 def create_rnn_model_v2(
     input_shape,
     nb_assets,

@@ -1,9 +1,6 @@
 import os
 #os.environ["KERAS_BACKEND"] = "jax"
-from keras import ops, layers, Input, models, optimizers, Model,initializers
-import keras
-import keras.backend as K
-
+from keras import ops, layers, Input, models, optimizers, Model
 
 class LSTM(layers.Layer):
     def __init__(self, units, return_sequences=False, dropout=0.3, **kwargs):
@@ -37,11 +34,15 @@ class LSTM(layers.Layer):
 
         self.built = True
 
-    def lstm_step(self, x_t, h_prev, c_prev):
-        i = ops.sigmoid(ops.dot(x_t, self.W_i) + ops.dot(h_prev, self.U_i) + self.b_i)
-        f = ops.sigmoid(ops.dot(x_t, self.W_f) + ops.dot(h_prev, self.U_f) + self.b_f)
-        c_tilde = ops.tanh(ops.dot(x_t, self.W_c) + ops.dot(h_prev, self.U_c) + self.b_c)
-        o = ops.sigmoid(ops.dot(x_t, self.W_o) + ops.dot(h_prev, self.U_o) + self.b_o)
+    def lstm_step(self, x_t, h_prev, c_prev, training=False):
+
+        if training:
+            x_t = self.dropout_layer(x_t)
+
+        i = ops.sigmoid(self.layernorm(ops.dot(x_t, self.W_i) + ops.dot(h_prev, self.U_i) + self.b_i))
+        f = ops.sigmoid(self.layernorm(ops.dot(x_t, self.W_f) + ops.dot(h_prev, self.U_f) + self.b_f))
+        c_tilde = ops.tanh(self.layernorm(ops.dot(x_t, self.W_c) + ops.dot(h_prev, self.U_c) + self.b_c))
+        o = ops.sigmoid(self.layernorm(ops.dot(x_t, self.W_o) + ops.dot(h_prev, self.U_o) + self.b_o))
         c_t = f * c_prev + i * c_tilde
         h_t = o * ops.tanh(c_t)
         return h_t, c_t
@@ -57,18 +58,18 @@ class LSTM(layers.Layer):
 
         for t in range(time_steps):
             x_t = inputs[:, t, :]
-            h_t, c_t = self.lstm_step(x_t, h_t, c_t)
-            h_t = self.layernorm(h_t)
-            h_t = self.dropout_layer(h_t)
-            outputs.append(h_t)
-
+            h_t, c_t = self.lstm_step(x_t, h_t, c_t, training=training)
+            #h_t = self.layernorm(h_t)
+            #if training:
+            #    h_t = self.dropout_layer(h_t)
             if self.return_sequences:
                 outputs.append(h_t)
         
         # Récupération de la séquence ou de l'output final
         if self.return_sequences:
             return ops.stack(outputs, axis=1)
-        return h_t
+        else:
+            return h_t
 
 class GRU(layers.Layer):
     def __init__(self, units, return_sequences=False, dropout=0.3, **kwargs):
@@ -77,6 +78,7 @@ class GRU(layers.Layer):
         self.return_sequences = return_sequences
         self.dropout = dropout
         self.layernorm = layers.LayerNormalization()
+        self.dropout_layer = layers.Dropout(self.dropout)
 
     def build(self, input_shape):
         input_dim = input_shape[-1]
@@ -94,12 +96,15 @@ class GRU(layers.Layer):
 
         self.built = True
 
-    def gru_step(self, x_t, h_prev):
-        z = ops.sigmoid(ops.dot(x_t, self.W_z) + ops.dot(h_prev, self.U_z) + self.b_z)
-        r = ops.sigmoid(ops.dot(x_t, self.W_r) + ops.dot(h_prev, self.U_r) + self.b_r)
-        h_hat = ops.tanh(ops.dot(x_t, self.W_h) + ops.dot(r * h_prev, self.U_h) + self.b_h)
+    def gru_step(self, x_t, h_prev, training):
+        if training:
+            x_t = self.dropout_layer(x_t)
+
+        z = ops.sigmoid(self.layernorm(ops.dot(x_t, self.W_z) + ops.dot(h_prev, self.U_z) + self.b_z))
+        r = ops.sigmoid(self.layernorm(ops.dot(x_t, self.W_r) + ops.dot(h_prev, self.U_r) + self.b_r))
+        h_hat = ops.tanh(self.layernorm(ops.dot(x_t, self.W_h) + ops.dot(r * h_prev, self.U_h) + self.b_h))
         h_t = (1 - z) * h_hat + z * h_prev
-        return self.layernorm(h_t)
+        return h_t
 
     def call(self, inputs, training = False):
         time_steps = ops.shape(inputs)[1]
@@ -110,85 +115,13 @@ class GRU(layers.Layer):
 
         for t in range(time_steps):
             x_t = inputs[:, t, :]
-            h_t = self.gru_step(x_t, h_t)
+            h_t = self.gru_step(x_t, h_t, training)
             outputs.append(h_t)
 
         outputs = ops.stack(outputs, axis=1)
         if not self.return_sequences:
             return outputs[:, -1, :]
         return outputs
-
-class PolyActivation(layers.Layer):
-    """Activation polynomiale (ordre 2)"""
-    def __init__(self, units, **kwargs):
-        super().__init__(**kwargs)
-        # trois coefficients par unité
-        self.a0 = self.add_weight( shape=(units,),initializer='zeros',name='a0')
-        self.a1 = self.add_weight(shape=(units,),initializer='ones',name='a1')
-        self.a2 = self.add_weight(shape=(units,),initializer=initializers.RandomNormal(0., 0.1),name='a2') 
-        
-    def call(self, x):
-        return self.a0 + self.a1 * x + self.a2 * (x * x)
-
-class KANFeedForward(layers.Layer):
-    """Sous-couche KAN : Dense puis PolyActivation puis Dense"""
-    def __init__(self, units, num_branches=32, **kwargs):
-        super().__init__(**kwargs)
-        self.units        = units
-        self.num_branches = num_branches
-
-        self.linear1 = layers.Dense(num_branches, use_bias=True)# projection
-        self.poly    = PolyActivation(num_branches)# activation polynomiale
-        self.linear2 = layers.Dense(units, use_bias=True)# retour à la dimension d'origine
-
-    def call(self, x):
-        h = self.linear1(x)
-        h = self.poly(h)
-        return self.linear2(h)
-
-class TKAN(layers.Layer):
-    """TrueTKAN : MultiHeadAttention + KANFeedForward + résidus + LayerNorm"""
-    def __init__(self,units,num_heads: int = 4,dropout: float = 0.1,return_sequences: bool = True,num_branches: int = 32,**kwargs):
-                         
-        super().__init__(**kwargs)
-        self.units = units
-        self.num_heads = num_heads
-        self.dropout = dropout
-        self.return_sequences = return_sequences
-        # projection linéaire 
-        self.input_proj  = layers.Dense(units) 
-       
-        self.attn = layers.MultiHeadAttention(num_heads=num_heads,key_dim=units) #attention multi-têtes
-        self.kan_ffn       = KANFeedForward(units, num_branches)# sous-couche KAN-feed-forward
-        self.dropout_layer = layers.Dropout(dropout)# dropout sur la sortie du feed-forward
-
-        # deux normalisations pour les connexions résiduelles
-        self.layernorm1    = layers.LayerNormalization()
-        self.layernorm2    = layers.LayerNormalization()
-
-    def call(self, inputs, training=None, **kwargs):
-        
-        z = self.input_proj(inputs)  # projection initiale              
-        a = self.attn(z, z, training=training) # multi-head self-attention    
-        r1 = self.layernorm1(z + a) # premier résidu + normalisation
-
-        f  = self.kan_ffn(r1)# KAN feed-forward 
-        f  = self.dropout_layer(f, training=training) #dropout
-        
-        r2 = self.layernorm2(r1 + f) # second résidu et normalisation
-
-        if self.return_sequences:
-            return r2                             
-        return r2[:, -1, :]   
-
-def create_lstm_model(input_shape, nb_assets, units=100, dropout=0.3):
-    model = keras.Sequential([
-        layers.Input(shape=input_shape), 
-        LSTM(units=units, return_sequences=False, dropout=dropout),
-        layers.Dense(nb_assets,activation='softplus')               
-    ])
-    model.compile(optimizer="adam", loss='mse', metrics=["mae"])
-    return model
 
 def create_native_lstm_model(
     input_shape,
@@ -218,6 +151,68 @@ def create_native_lstm_model(
     model.compile(optimizer=opt, loss="mse", metrics=["mae"])
     return model
 
+def create_rnn_model_v2(
+    input_shape,
+    nb_assets,
+    rnn_layer,
+    use_simple_model=False,
+    conv_filters=32,
+    conv_kernel_size=3,
+    conv_activation="relu",
+    lr = 1e-3,
+    clipnorm = 1.0
+):
+    """
+    Fonction utilisée pour construire des modèles RNN simples / plus complet
+    """
+    # Création d'une couche d'inputs
+    inputs = Input(shape=input_shape)
+    x = inputs
+
+    # Cas où l'utilisateur souhaite utiliser le modèle simple (une seule couche RNN)
+    if use_simple_model:
+            # Ajout d'une couche RNN (LSTM, GRU)
+            x = rnn_layer(x)
+            # Récupération des outputs (softplus pour être > 0)
+            outputs = layers.Dense(1, activation="softplus")(x)
+    # Cas où l'utilisateur souhaite un modèle plus complet (plusieurs couches RNN)
+    else:
+        # Convolution 1D
+        x = layers.Conv1D(
+            filters=conv_filters,
+            kernel_size=conv_kernel_size,
+            padding="same",
+            activation=conv_activation
+        )(x)
+
+        # Deux couches de RNN (LSTM / GRU / TKAN selon le cas)
+        x = rnn_layer()(x)
+        x = rnn_layer()(x)
+
+        # Couche d'attention
+        x = layers.MultiHeadAttention(num_heads=4, key_dim=x.shape[-1])(x,x,x)
+
+        # Prévision avec un flatten
+        x  = layers.Flatten()(x)
+
+        # Ajout de plusieurs couches denses avec fonction d'activation ReLU
+        x = layers.Dense(64, activation="relu")(x)
+        x = layers.Dropout(0.2)(x)
+        x = layers.Dense(32, activation="relu")(x)
+        x = layers.Dropout(0.2)(x)
+
+        # Récupération de l'output final avec fonction d'activation softplus
+        outputs = layers.Dense(1, activation="softplus")(x)
+
+    # Construction du modèle et optimisation
+    model = Model(inputs, outputs)
+    opt = optimizers.Adam(learning_rate=lr, clipnorm=clipnorm)
+    model.compile(optimizer=opt, loss="mean_squared_error", metrics=["mae"], jit_compile=False)
+
+    # Résumé et récupération
+    model.summary()
+    return model
+
 def create_rnn_model(
     input_shape,
     nb_assets,
@@ -227,6 +222,9 @@ def create_rnn_model(
     conv_kernel_size=3,
     conv_activation="relu"
 ):
+    """
+    Fonction utilisée pour construire des convolutions 1D
+    """
     inputs = Input(shape=input_shape)
 
     x = inputs
@@ -243,4 +241,7 @@ def create_rnn_model(
 
     model = Model(inputs, outputs)
     model.compile(optimizer="adam", loss="mse", metrics=["mae"])
+    model.summary()
     return model
+
+

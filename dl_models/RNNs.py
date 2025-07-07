@@ -164,14 +164,8 @@ def create_rnn_model_v2(
         # Couche d'attention
         x = layers.MultiHeadAttention(num_heads=4, key_dim=x.shape[-1])(x,x,x)
 
-        # Prévision avec un flatten
+        # Réduction de la dimension avec un flatten
         x  = layers.Flatten()(x)
-
-        # Ajout de plusieurs couches denses avec fonction d'activation ReLU
-        x = layers.Dense(64, activation="relu")(x)
-        x = layers.Dropout(0.2)(x)
-        x = layers.Dense(32, activation="relu")(x)
-        x = layers.Dropout(0.2)(x)
 
         # Récupération de l'output final avec fonction d'activation softplus
         outputs = layers.Dense(1, activation="softplus")(x)

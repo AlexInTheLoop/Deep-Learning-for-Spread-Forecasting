@@ -157,9 +157,8 @@ def create_rnn_model_v2(
             activation=conv_activation
         )(x)
 
-        # Deux couches de RNN (LSTM / GRU / TKAN selon le cas)
-        x = rnn_layer()(x)
-        x = rnn_layer()(x)
+        # Application d'une couche de RNN
+        x = rnn_layer(x)
 
         # Couche d'attention
         x = layers.MultiHeadAttention(num_heads=4, key_dim=x.shape[-1])(x,x,x)
@@ -176,37 +175,6 @@ def create_rnn_model_v2(
     model.compile(optimizer=opt, loss="mean_squared_error", metrics=["mae"], jit_compile=False)
 
     # Résumé et récupération
-    model.summary()
-    return model
-
-def create_rnn_model(
-    input_shape,
-    nb_assets,
-    rnn_layer,
-    use_conv=False,
-    conv_filters=32,
-    conv_kernel_size=3,
-    conv_activation="relu"
-):
-    """
-    Fonction utilisée pour construire des convolutions 1D
-    """
-    inputs = Input(shape=input_shape)
-
-    x = inputs
-
-    if use_conv:
-        x = layers.Conv1D(
-            filters=conv_filters,
-            kernel_size=conv_kernel_size,
-            padding="same",
-            activation=conv_activation
-        )(x)
-    x = rnn_layer(x)
-    outputs = layers.Dense(1, activation="softplus")(x)
-
-    model = Model(inputs, outputs)
-    model.compile(optimizer="adam", loss="mse", metrics=["mae"])
     model.summary()
     return model
 

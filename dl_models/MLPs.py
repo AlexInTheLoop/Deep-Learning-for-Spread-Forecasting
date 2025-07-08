@@ -84,7 +84,7 @@ def create_mlp_model(input_shape, model_type="simple",output_activation='softplu
         model.compile(optimizer='adam', loss='mse')
         return model
     else:
-        raise ValueError(f"Unknown model_type '{model_type}'. Use 'simple' or 'residual'.")
+        raise ValueError(f"Modèle inconnu '{model_type}'. Utiliser 'simple' ou 'residual'.")
 
 
 class LRHistory(callbacks.Callback):
